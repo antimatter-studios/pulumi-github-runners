@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `Pool.maxRunnersAgent`: the runner-gate agent owns the pool's live `maxRunners`. `maxRunners`
+  becomes the ceiling, published as the annotation `runners.antimatter.studios/max-runners-ceiling`;
+  Pulumi creates the scale set at `floor` and then ignores the live field. Off by default.
+- `GateAgent.manageMaxRunners`: grants the agent `list` and `patch` on `autoscalingrunnersets` in its
+  runner namespaces only. Off by default.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent

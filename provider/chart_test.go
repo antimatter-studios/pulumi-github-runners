@@ -15,12 +15,6 @@ import (
 // itself, and the runner pod checked in its output. The chart could drop or rewrite a field the
 // values set (it does, in its dind mode), and no test of the values alone would notice.
 func TestTheChartKeepsThePodAsWritten(t *testing.T) {
-	if testing.Short() {
-		t.Skip("pulls the chart")
-	}
-	if _, err := exec.LookPath("helm"); err != nil {
-		t.Skip("helm is not installed")
-	}
 	a := basePool()
 	a.MaxRunners = ip(4)
 	a.Devices = map[string]string{"devic.es/kvm": "1"}
@@ -29,6 +23,44 @@ func TestTheChartKeepsThePodAsWritten(t *testing.T) {
 	a.SupplementalGroups = []int{993}
 	a.TopologySpread = bp(true)
 	a.Slots = &PoolSlots{Enabled: bp(true)}
+	set := renderScaleSet(t, a)
+	if get(t, set, "spec", "runnerGroup") != "ryzen" || get(t, set, "spec", "maxRunners") != float64(4) {
+		t.Fatalf("spec %v", set["spec"])
+	}
+	pod := get(t, set, "spec", "template").(map[string]any)
+	want := podTemplate(a)
+	for _, field := range []string{"hostUsers", "automountServiceAccountToken", "dnsConfig", "resources", "securityContext", "topologySpreadConstraints"} {
+		if g, w := get(t, pod, "spec", field), get(t, want, "spec", field); !jsonEqual(g, w) {
+			t.Errorf("%s: chart rendered %v, values had %v", field, g, w)
+		}
+	}
+	for _, name := range []string{"runner", "docker"} {
+		if g, w := container(t, pod, name), container(t, want, name); !jsonEqual(g, w) {
+			t.Errorf("container %s changed by the chart:\n got %v\nwant %v", name, g, w)
+		}
+		limits := get(t, container(t, pod, name), "resources", "limits").(map[string]any)
+		if limits["cpu"] != nil || limits["memory"] != nil {
+			t.Errorf("%s has its own CPU or memory limit: %v", name, limits)
+		}
+	}
+	runner := container(t, pod, "runner")
+	if !jsonEqual(runner["command"], wantRunnerCommand) {
+		t.Errorf("rendered runner command %v, want %v", runner["command"], wantRunnerCommand)
+	}
+	if got := len(get(t, pod, "spec", "containers").([]any)); got != 2 {
+		t.Errorf("%d containers: the chart added one", got)
+	}
+}
+
+// renderScaleSet renders the pinned chart with a pool's values and returns its AutoscalingRunnerSet.
+func renderScaleSet(t *testing.T, a PoolArgs) map[string]any {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("pulls the chart")
+	}
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Skip("helm is not installed")
+	}
 	dir := t.TempDir()
 	values := filepath.Join(dir, "values.json")
 	raw, err := json.Marshal(scaleSetValues(a, "arc-github", "ryzen"))
@@ -59,31 +91,21 @@ func TestTheChartKeepsThePodAsWritten(t *testing.T) {
 	if set == nil {
 		t.Fatalf("no AutoscalingRunnerSet in:\n%s", out)
 	}
-	if get(t, set, "spec", "runnerGroup") != "ryzen" || get(t, set, "spec", "maxRunners") != float64(4) {
-		t.Fatalf("spec %v", set["spec"])
+	return set
+}
+
+// The ceiling has to reach the AutoscalingRunnerSet itself, where the agent reads it, and the live
+// field has to start at the floor.
+func TestTheChartPublishesTheCeilingOnTheScaleSet(t *testing.T) {
+	a := basePool()
+	a.MaxRunners = ip(6)
+	a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true)}
+	set := renderScaleSet(t, a)
+	if get(t, set, "spec", "maxRunners") != float64(1) {
+		t.Fatalf("maxRunners %v, want the floor 1", get(t, set, "spec", "maxRunners"))
 	}
-	pod := get(t, set, "spec", "template").(map[string]any)
-	want := podTemplate(a)
-	for _, field := range []string{"hostUsers", "automountServiceAccountToken", "dnsConfig", "resources", "securityContext", "topologySpreadConstraints"} {
-		if g, w := get(t, pod, "spec", field), get(t, want, "spec", field); !jsonEqual(g, w) {
-			t.Errorf("%s: chart rendered %v, values had %v", field, g, w)
-		}
-	}
-	for _, name := range []string{"runner", "docker"} {
-		if g, w := container(t, pod, name), container(t, want, name); !jsonEqual(g, w) {
-			t.Errorf("container %s changed by the chart:\n got %v\nwant %v", name, g, w)
-		}
-		limits := get(t, container(t, pod, name), "resources", "limits").(map[string]any)
-		if limits["cpu"] != nil || limits["memory"] != nil {
-			t.Errorf("%s has its own CPU or memory limit: %v", name, limits)
-		}
-	}
-	runner := container(t, pod, "runner")
-	if !jsonEqual(runner["command"], wantRunnerCommand) {
-		t.Errorf("rendered runner command %v, want %v", runner["command"], wantRunnerCommand)
-	}
-	if got := len(get(t, pod, "spec", "containers").([]any)); got != 2 {
-		t.Errorf("%d containers: the chart added one", got)
+	if got := get(t, set, "metadata", "annotations", maxRunnersCeilingAnnotation); got != "6" {
+		t.Fatalf("ceiling annotation %v, want \"6\"", got)
 	}
 }
 

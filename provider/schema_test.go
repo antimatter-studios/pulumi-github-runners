@@ -55,7 +55,7 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	}
 	// The load-aware capacity options are opt-in: a stack that does not set them keeps working.
 	pool := spec.Resources["github-runners:index:Pool"]
-	for resource, inputs := range map[string][]string{"Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
+	for resource, inputs := range map[string][]string{"Pool": {"slots", "maxRunnersAgent"}, "GateAgent": {"manageSlots", "manageMaxRunners"}} {
 		r := spec.Resources["github-runners:index:"+resource]
 		for _, name := range inputs {
 			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {

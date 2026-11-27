@@ -51,6 +51,10 @@ export interface GateAgentArgs {
      */
     listenerNamespace?: string;
     /**
+     * Let the agent read and patch the AutoscalingRunnerSets in runnerNamespaces, so it can set each pool's live maxRunners under its ceiling. Default false; granted in runnerNamespaces only.
+     */
+    manageMaxRunners?: boolean;
+    /**
      * Let the agent patch nodes/status, so it can publish each node's runner slots (the extended resource runners.antimatter.studios/slot) for pools with slots enabled. Default false; nothing broader than nodes/status patch is granted.
      */
     manageSlots?: boolean;

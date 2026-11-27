@@ -431,6 +431,12 @@ func TestCheckPool(t *testing.T) {
 			a.ConfigURL, a.RunnerGroup = "https://github.com/acme/repo", &RunnerGroup{Name: "ryzen"}
 		},
 		"reserved hook file": func(a *PoolArgs) { a.Hook = &PoolHook{Files: map[string]string{"custom.sh": ""}} },
+		"agent floor above maxRunners": func(a *PoolArgs) {
+			a.MaxRunners, a.MaxRunnersAgent = ip(4), &PoolMaxRunnersAgent{Enabled: bp(true), Floor: ip(5)}
+		},
+		"agent floor below minRunners": func(a *PoolArgs) {
+			a.MinRunners, a.MaxRunners, a.MaxRunnersAgent = ip(2), ip(4), &PoolMaxRunnersAgent{Enabled: bp(true), Floor: ip(1)}
+		},
 		"slot without a domain": func(a *PoolArgs) {
 			a.Slots = &PoolSlots{Enabled: bp(true), ResourceName: sp("slot")}
 		},
@@ -477,6 +483,50 @@ func TestScaleSetValues(t *testing.T) {
 	if _, ok := v["containerMode"]; ok {
 		t.Fatal("no containerMode: the sidecar is ours, not the chart's dind")
 	}
+}
+
+func TestMaxRunnersStaysDeclaredUnlessTheAgentOwnsIt(t *testing.T) {
+	for _, agent := range []*PoolMaxRunnersAgent{nil, {}, {Enabled: bp(false), Floor: ip(1)}} {
+		a := basePool()
+		a.MaxRunners = ip(6)
+		a.MaxRunnersAgent = agent
+		v := scaleSetValues(a, "s", "")
+		if v["maxRunners"] != 6 || has(t, v, "resourceMeta") {
+			t.Fatalf("agent %+v: values %v, want the declared maxRunners and no ceiling", agent, v)
+		}
+	}
+}
+
+func TestTheAgentStartsAPoolAtTheFloorUnderItsCeiling(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		min, floor        *int
+		wantMax, wantMinR int
+	}{
+		{"default floor", nil, nil, 1, 0},
+		{"floor follows minRunners", ip(3), nil, 3, 3},
+		{"explicit floor", ip(1), ip(2), 2, 1},
+	} {
+		a := basePool()
+		a.MinRunners, a.MaxRunners = tc.min, ip(6)
+		a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true), Floor: tc.floor}
+		if err := checkPool(withApp(a)); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		v := scaleSetValues(a, "s", "")
+		if v["maxRunners"] != tc.wantMax || v["minRunners"] != tc.wantMinR {
+			t.Errorf("%s: maxRunners %v minRunners %v, want %d and %d", tc.name, v["maxRunners"], v["minRunners"], tc.wantMax, tc.wantMinR)
+		}
+		// A string: annotation values are strings, and the chart quotes them anyway.
+		if got := get(t, v, "resourceMeta", "autoscalingRunnerSet", "annotations", maxRunnersCeilingAnnotation); got != "6" {
+			t.Errorf("%s: ceiling %v, want \"6\"", tc.name, got)
+		}
+	}
+}
+
+func withApp(a PoolArgs) PoolArgs {
+	a.App = &GitHubApp{AppID: "1", InstallationID: "2", PrivateKey: stringInput("k")}
+	return a
 }
 
 func TestNetworkPolicy(t *testing.T) {

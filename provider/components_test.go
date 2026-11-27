@@ -1,6 +1,7 @@
 package githubrunners
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 type registered struct {
 	typ, name, provider string
 	inputs              resource.PropertyMap
+	ignoreChanges       []string
 }
 
 type mocks struct {
@@ -21,7 +23,7 @@ type mocks struct {
 
 func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	m.mu.Lock()
-	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs})
+	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs, args.RegisterRPC.GetIgnoreChanges()})
 	m.mu.Unlock()
 	return args.Name + "-id", args.Inputs, nil
 }
@@ -179,6 +181,29 @@ func TestPoolWithAGitHubAppAndNoGroup(t *testing.T) {
 	files := m.find(t, "kubernetes:core/v1:ConfigMap", "-hooks").inputs["data"].ObjectValue()
 	if files.HasValue("reject-forks.sh") || !files.HasValue("allowed-actors") || !files.HasValue("custom.sh") {
 		t.Fatalf("hook files %v", files.StableKeys())
+	}
+}
+
+// With the agent owning the live maxRunners, Pulumi must not manage the field after creation: a
+// deploy after the agent has raised it would otherwise put it back. The ceiling still follows the
+// declared maxRunners on every deploy.
+func TestPulumiLetsTheAgentOwnTheLiveMaxRunners(t *testing.T) {
+	a := withApp(basePool())
+	release := runPool(t, a).find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
+	if len(release.ignoreChanges) != 0 {
+		t.Fatalf("by default Pulumi owns maxRunners, but ignores %v", release.ignoreChanges)
+	}
+
+	a.MaxRunners = ip(8)
+	a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true)}
+	release = runPool(t, a).find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
+	if !reflect.DeepEqual(release.ignoreChanges, []string{"values.maxRunners"}) {
+		t.Fatalf("ignoreChanges %v, want only values.maxRunners", release.ignoreChanges)
+	}
+	values := release.inputs["values"].ObjectValue()
+	ceiling := values["resourceMeta"].ObjectValue()["autoscalingRunnerSet"].ObjectValue()["annotations"].ObjectValue()
+	if values["maxRunners"].NumberValue() != 1 || ceiling[maxRunnersCeilingAnnotation].StringValue() != "8" {
+		t.Fatalf("values %v: want maxRunners at the floor, 1, and the ceiling 8", values)
 	}
 }
 

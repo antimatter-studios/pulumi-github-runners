@@ -78,6 +78,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
             resourceInputs["maxRunners"] = args?.maxRunners;
+            resourceInputs["maxRunnersAgent"] = args?.maxRunnersAgent;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
             resourceInputs["memoryRequest"] = args?.memoryRequest;
             resourceInputs["minRunners"] = args?.minRunners;

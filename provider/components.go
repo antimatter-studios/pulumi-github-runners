@@ -299,6 +299,14 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		deps = append(deps, group)
 	}
 
+	releaseOpts := []pulumi.ResourceOption{child, pulumi.DependsOn(deps)}
+	if agentOwnsMaxRunners(a) {
+		// The agent owns the live maxRunners. Pulumi keeps the value it created the release with, so
+		// Helm renders the same maxRunners on every upgrade; Helm patches a custom resource with a
+		// merge patch of the old render against the new one, so an unchanged field is left out and
+		// the agent's live value stands.
+		releaseOpts = append(releaseOpts, pulumi.IgnoreChanges([]string{maxRunnersValuePath}))
+	}
 	release, err := helmv3.NewRelease(ctx, name+"-scale-set", &helmv3.ReleaseArgs{
 		Name:            pulumi.String(a.ScaleSetName),
 		Chart:           pulumi.String(arcCharts + "/gha-runner-scale-set"),
@@ -306,7 +314,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		Namespace:       pulumi.String(namespace),
 		CreateNamespace: pulumi.Bool(false),
 		Values:          pulumi.ToMap(scaleSetValues(a, secretName, runnerGroup)),
-	}, child, pulumi.DependsOn(deps))
+	}, releaseOpts...)
 	if err != nil {
 		return nil, err
 	}

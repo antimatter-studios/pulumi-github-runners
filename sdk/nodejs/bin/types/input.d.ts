@@ -79,6 +79,16 @@ export interface PoolHookArgs {
      */
     script?: pulumi.Input<string | undefined>;
 }
+export interface PoolMaxRunnersAgentArgs {
+    /**
+     * Let the runner-gate agent own the live maxRunners. Default false. maxRunners then becomes the ceiling, published on the AutoscalingRunnerSet as the annotation runners.antimatter.studios/max-runners-ceiling.
+     */
+    enabled?: pulumi.Input<boolean | undefined>;
+    /**
+     * The maxRunners a new scale set starts at, before the agent raises it. Default 1, or minRunners if higher. Written only when the scale set is created: an existing pool keeps its live value, and a later change to floor is not applied.
+     */
+    floor?: pulumi.Input<number | undefined>;
+}
 export interface PoolNetworkPolicyArgs {
     allow?: pulumi.Input<pulumi.Input<inputs.NetworkAllowArgs>[] | undefined>;
     blockPrivate?: pulumi.Input<boolean | undefined>;

@@ -259,11 +259,21 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace string) []gateAgen
 			continue
 		}
 		seen[namespace] = true
-		pairs = append(pairs, newPair("runner-"+namespace, gateAgentName+"-runner", namespace, rbacv1.PolicyRuleArray{
+		rules := rbacv1.PolicyRuleArray{
 			gateAgentListRule("", "pods"),
 			gateAgentListRule("metrics.k8s.io", "pods"),
 			gateAgentListRule("actions.github.com", "ephemeralrunners"),
-		}))
+		}
+		if a.ManageMaxRunners != nil && *a.ManageMaxRunners {
+			// list to read each pool's ceiling annotation, patch to apply the live maxRunners with
+			// its own field manager. Only in the runner namespaces, where the pools' scale sets are.
+			rules = append(rules, &rbacv1.PolicyRuleArgs{
+				ApiGroups: pulumi.ToStringArray([]string{"actions.github.com"}),
+				Resources: pulumi.ToStringArray([]string{"autoscalingrunnersets"}),
+				Verbs:     pulumi.ToStringArray([]string{"list", "patch"}),
+			})
+		}
+		pairs = append(pairs, newPair("runner-"+namespace, gateAgentName+"-runner", namespace, rules))
 	}
 	return pairs
 }

@@ -69,9 +69,13 @@ export interface PoolArgs {
      */
     image?: string;
     /**
-     * Jobs at once. Default 2.
+     * Jobs at once. Default 2. With maxRunnersAgent enabled, the ceiling the agent may raise the pool to.
      */
     maxRunners?: number;
+    /**
+     * Let the runner-gate agent set the live maxRunners from the cluster's load, up to maxRunners. Off unless enabled.
+     */
+    maxRunnersAgent?: pulumi.Input<inputs.PoolMaxRunnersAgentArgs | undefined>;
     /**
      * The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
