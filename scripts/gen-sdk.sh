@@ -15,12 +15,30 @@ mv "$out/nodejs" "$root/sdk/nodejs"
 # overrides a base-class member without saying so, which `noImplicitOverride` rejects.
 find "$root/sdk/nodejs" -name '*.ts' -exec sed -i.bak 's/public static isInstance(/public static override isInstance(/' {} +
 find "$root/sdk/nodejs" -name '*.bak' -delete
-# Consumers link this directory and load it as TypeScript, so main points at the source. The
-# generator leaves the version as the literal "${VERSION}"; the committed SDK is the development
-# build, matched by a plugin built from this checkout and installed as 0.0.0-dev.
+# Consumers link this directory (`link:../pulumi-github-runners/sdk/nodejs`) and load it from their
+# programs, which Node runs with type stripping: that takes only erasable TypeScript, and the
+# generated SDK is CommonJS-style TypeScript written to be compiled (require, exports,
+# extensionless imports, <any> casts). So it is compiled here, as pulumi-homelab does, and main
+# points at the JavaScript; bin/ is committed so a link needs no build step. The generator leaves
+# the version as the literal "${VERSION}"; the committed SDK is the development build, matched by a
+# plugin built from this checkout and installed as 0.0.0-dev.
 node -e '
 const f = process.argv[1], p = JSON.parse(require("fs").readFileSync(f, "utf8"));
-p.main = "index.ts";
 p.version = "0.0.0-dev";
 if (p.pulumi) p.pulumi.version = "0.0.0-dev";
+// exact build tools, so a new TypeScript patch cannot change the committed output under CI check
+p.devDependencies = { "@types/node": "14.18.63", "typescript": "4.9.5" };
+p.main = "bin/index.js";
+p.types = "bin/index.d.ts";
 require("fs").writeFileSync(f, JSON.stringify(p, null, 4) + "\n");' "$root/sdk/nodejs/package.json"
+(
+  cd "$root/sdk/nodejs"
+  npm install --no-audit --no-fund --no-package-lock --silent >/dev/null
+  npx --no-install tsc
+  rm -rf node_modules
+  # the compiled utilities read their version from ./package.json beside them
+  node -e '
+const p = JSON.parse(require("fs").readFileSync("package.json", "utf8"));
+p.main = "index.js"; p.types = "index.d.ts";
+require("fs").writeFileSync("bin/package.json", JSON.stringify(p, null, 4) + "\n");'
+)
