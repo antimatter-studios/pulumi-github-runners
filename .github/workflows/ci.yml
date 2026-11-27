@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A pull request that is superseded is not worth finishing.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: provider
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: provider/go.mod
+          cache-dependency-path: provider/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+  sdk:
+    # The committed TypeScript SDK is generated from the plugin's schema; a resource change without
+    # a regenerated SDK fails here rather than in a consumer.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: provider/go.mod
+          cache-dependency-path: provider/go.sum
+
+      - uses: pulumi/actions@v6
+        with:
+          # The version the committed SDK was generated with, so the comparison is like for like.
+          pulumi-version: 3.273.0
+
+      - name: Regenerate
+        run: scripts/gen-sdk.sh
+
+      - name: Compare
+        run: |
+          if [ -n "$(git status --porcelain -- sdk)" ]; then
+            git status --short -- sdk
+            echo "sdk/nodejs is stale: run scripts/gen-sdk.sh and commit the result" >&2
+            exit 1
+          fi

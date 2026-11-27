@@ -1,0 +1,26 @@
+name: Release on green
+
+# Releases main once its CI has passed, and never otherwise. The release itself is pulumi-homelab's
+# reusable workflow: the next version from the conventional-commit subjects since the last tag,
+# notes from CHANGELOG.md, and the plugin built for each platform.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    uses: antimatter-studios/pulumi-homelab/.github/workflows/release.yml@main
+    with:
+      binary: pulumi-resource-github-runners
+      sha: ${{ github.event.workflow_run.head_sha || github.sha }}
