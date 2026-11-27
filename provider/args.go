@@ -5,6 +5,42 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+// GateAgentArgs configure one cluster's runner-gate agent.
+type GateAgentArgs struct {
+	Cluster           string             `pulumi:"cluster"`
+	Token             pulumi.StringInput `pulumi:"token" provider:"secret"`
+	Image             string             `pulumi:"image"`
+	GateURL           *string            `pulumi:"gateUrl,optional"`
+	Namespace         *string            `pulumi:"namespace,optional"`
+	ListenerNamespace *string            `pulumi:"listenerNamespace,optional"`
+	RunnerNamespaces  []string           `pulumi:"runnerNamespaces"`
+	Interval          *string            `pulumi:"interval,optional"`
+	ImagePull         GateAgentImagePull `pulumi:"imagePull"`
+}
+
+// GateAgentImagePull supplies the credentials for the agent image registry.
+type GateAgentImagePull struct {
+	Registry *string            `pulumi:"registry,optional"`
+	Username string             `pulumi:"username"`
+	Password pulumi.StringInput `pulumi:"password" provider:"secret"`
+}
+
+func (a *GateAgentArgs) Annotate(an infer.Annotator) {
+	an.Describe(&a.Cluster, "The cluster name registered with the public runner-gate, e.g. homelab.")
+	an.Describe(&a.Token, "The public runner-gate's agent token for this cluster.")
+	an.Describe(&a.Image, "The agent image, pinned to a 16-hex tag: "+gateAgentImageRepository+":<tag>.")
+	an.Describe(&a.GateURL, "The public runner-gate URL. Defaults to "+defaultGateAgentURL+".")
+	an.Describe(&a.Namespace, "Existing namespace in which to deploy the agent. Defaults to "+defaultGateAgentNamespace+".")
+	an.Describe(&a.ListenerNamespace, "Existing namespace of the ARC listener pods. Defaults to "+defaultGateAgentNamespace+".")
+	an.Describe(&a.RunnerNamespaces, "Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.")
+	an.Describe(&a.Interval, "How often to push a pool snapshot, e.g. 10s. Defaults to the agent's interval.")
+	an.Describe(&a.ImagePull, "Registry credentials for the agent image's pull Secret.")
+}
+
+func (a *GateAgentImagePull) Annotate(an infer.Annotator) {
+	an.Describe(&a.Registry, "Registry host for the image pull credentials. Defaults to "+defaultGateAgentRegistry+".")
+}
+
 // PoolArgs are a Pool's inputs: one organisation's runners on one machine.
 type PoolArgs struct {
 	// Not `id`: Pulumi reserves that property name on every resource and strips it from a

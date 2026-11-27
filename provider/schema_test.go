@@ -3,12 +3,14 @@ package githubrunners
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/blang/semver"
 	p "github.com/pulumi/pulumi-go-provider"
 	"github.com/pulumi/pulumi-go-provider/integration"
+	"github.com/pulumi/pulumi/pkg/v3/codegen/schema"
 )
 
 // The plugin's schema is what the TypeScript SDK is generated from, so it has to build, name the
@@ -32,6 +34,24 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 		if !strings.Contains(compact, want) {
 			t.Errorf("schema lacks %s", want)
 		}
+	}
+
+	var spec schema.PackageSpec
+	if err := json.Unmarshal([]byte(resp.Schema), &spec); err != nil {
+		t.Fatal(err)
+	}
+	agent := spec.Resources["github-runners:index:GateAgent"]
+	for _, name := range []string{"cluster", "token", "image", "runnerNamespaces", "imagePull"} {
+		if !slices.Contains(agent.RequiredInputs, name) {
+			t.Errorf("GateAgent schema must require %s", name)
+		}
+	}
+	pull := spec.Types[strings.TrimPrefix(agent.InputProperties["imagePull"].Ref, "#/types/")]
+	if !agent.InputProperties["token"].Secret || !pull.Properties["password"].Secret {
+		t.Error("GateAgent schema must mark the token and image pull password as secret")
+	}
+	if agent.Properties["claimUrl"].Type != "string" {
+		t.Error("GateAgent schema must expose a string claimUrl")
 	}
 }
 

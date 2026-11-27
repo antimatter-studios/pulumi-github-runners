@@ -11,6 +11,15 @@ export interface DeviceOfferArgs {
     paths: pulumi.Input<pulumi.Input<string>[]>;
 }
 
+export interface GateAgentImagePullArgs {
+    password: pulumi.Input<string>;
+    /**
+     * Registry host for the image pull credentials. Defaults to git.antimatter-studios.com.
+     */
+    registry?: pulumi.Input<string | undefined>;
+    username: pulumi.Input<string>;
+}
+
 export interface GitHubAppArgs {
     appId: pulumi.Input<string>;
     installationId: pulumi.Input<string>;
