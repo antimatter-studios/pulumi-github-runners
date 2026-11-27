@@ -1,0 +1,9 @@
+{
+  "name": "pulumi-github-runners",
+  "private": true,
+  "description": "Installs what the generated TypeScript SDK in sdk/nodejs imports, so a stack that links it (link:../pulumi-github-runners/sdk/nodejs) resolves @pulumi/pulumi from this checkout, as pulumi-homelab's SDK does.",
+  "dependencies": {
+    "@pulumi/pulumi": "^3.140.0"
+  },
+  "packageManager": "pnpm@10.30.3"
+}
