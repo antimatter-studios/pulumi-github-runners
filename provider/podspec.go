@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -398,6 +399,26 @@ func quantities(cpu, memory *string) map[string]any {
 	return out
 }
 
+// maxRunnersCeilingAnnotation carries a pool's maxRunners on its AutoscalingRunnerSet when the
+// agent owns the live value: the most the agent may set it to.
+const maxRunnersCeilingAnnotation = "runners.antimatter.studios/max-runners-ceiling"
+
+// maxRunnersValuePath is the Helm value Pulumi stops managing once the agent owns maxRunners.
+const maxRunnersValuePath = "values.maxRunners"
+
+func agentOwnsMaxRunners(a PoolArgs) bool {
+	return a.MaxRunnersAgent != nil && a.MaxRunnersAgent.Enabled != nil && *a.MaxRunnersAgent.Enabled
+}
+
+// maxRunnersFloor is where a pool the agent owns starts: never unlimited, and never below
+// minRunners, which the chart refuses.
+func maxRunnersFloor(a PoolArgs) int {
+	if a.MaxRunnersAgent != nil && a.MaxRunnersAgent.Floor != nil {
+		return *a.MaxRunnersAgent.Floor
+	}
+	return max(1, intOr(a.MinRunners, 0))
+}
+
 // scaleSetValues are the gha-runner-scale-set chart's values for a pool.
 func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[string]any {
 	v := map[string]any{
@@ -407,6 +428,15 @@ func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[strin
 		"minRunners":         intOr(a.MinRunners, 0),
 		"maxRunners":         intOr(a.MaxRunners, 2),
 		"template":           podTemplate(a),
+	}
+	if agentOwnsMaxRunners(a) {
+		// The agent writes the live value; this one is only the start, and NewPool tells Pulumi to
+		// ignore later changes to it. maxRunners is published as the ceiling, as an annotation the
+		// chart puts on the AutoscalingRunnerSet alone.
+		v["maxRunners"] = maxRunnersFloor(a)
+		v["resourceMeta"] = map[string]any{"autoscalingRunnerSet": map[string]any{
+			"annotations": map[string]any{maxRunnersCeilingAnnotation: strconv.Itoa(intOr(a.MaxRunners, 2))},
+		}}
 	}
 	if runnerGroup != "" {
 		v["runnerGroup"] = runnerGroup
@@ -477,6 +507,11 @@ func checkPool(a PoolArgs) error {
 	}
 	if maxR < 1 || maxR < minR {
 		return fmt.Errorf("pool %s: maxRunners must be at least 1 and at least minRunners", a.ID)
+	}
+	if agentOwnsMaxRunners(a) {
+		if floor := maxRunnersFloor(a); floor < minR || floor > maxR {
+			return fmt.Errorf("pool %s: maxRunnersAgent.floor %d must be between minRunners (%d) and maxRunners (%d)", a.ID, floor, minR, maxR)
+		}
 	}
 	if (a.App == nil) == (a.Token == nil) {
 		return fmt.Errorf("pool %s: give exactly one of app (a GitHub App, recommended) or token (a PAT)", a.ID)

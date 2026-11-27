@@ -234,6 +234,22 @@ func TestTheChartsRenderMonitoring(t *testing.T) {
 	}
 }
 
+// The ceiling has to reach the AutoscalingRunnerSet itself, where the agent reads it, and the live
+// field has to start at the floor.
+func TestTheChartPublishesTheCeilingOnTheScaleSet(t *testing.T) {
+	needHelm(t)
+	a := basePool()
+	a.MaxRunners = ip(6)
+	a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true)}
+	set := renderScaleSet(t, a, "ryzen")
+	if get(t, set, "spec", "maxRunners") != float64(1) {
+		t.Fatalf("maxRunners %v, want the floor 1", get(t, set, "spec", "maxRunners"))
+	}
+	if got := get(t, set, "metadata", "annotations", maxRunnersCeilingAnnotation); got != "6" {
+		t.Fatalf("ceiling annotation %v, want \"6\"", got)
+	}
+}
+
 func jsonEqual(a, b any) bool {
 	ra, _ := json.Marshal(a)
 	rb, _ := json.Marshal(b)

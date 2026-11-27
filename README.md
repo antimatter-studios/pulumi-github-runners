@@ -144,6 +144,20 @@ not both, or every series is scraped twice.
 The GateAgent's port 8080 has its own policy. To let a scraper reach it, add the scraper to the
 GateAgent's `networkPolicy.allow`, with the same `namespaceLabels` and `podLabels` as above. The
 `PodMonitor` here does not select the agent.
+### Live maxRunners (load-aware capacity, #22)
+
+`Pool.maxRunnersAgent: {enabled: true}` hands the pool's live `maxRunners` to the runner-gate agent.
+`maxRunners` then becomes the ceiling, published on the AutoscalingRunnerSet as the annotation
+`runners.antimatter.studios/max-runners-ceiling`, and updated on every deploy. Pulumi writes the
+live `spec.maxRunners` once, at `floor` (default 1, or `minRunners` if higher), when it creates the
+scale set, and then ignores it (`ignoreChanges: ["values.maxRunners"]` on the Helm release). Helm
+patches the scale set with a merge of its old and new render, so an unchanged field is left out
+and the agent's value stands across deploys. A pool switched over keeps its current live value.
+
+The agent applies `spec.maxRunners` with server-side apply under its own field manager
+(`runner-gate`). Helm last wrote the field, so the agent's first apply has to force ownership. It
+needs `GateAgent.manageMaxRunners: true`: `list` and `patch` on `autoscalingrunnersets` in
+`runnerNamespaces` only. Both are off by default, and without them Pulumi owns `maxRunners` as before.
 
 ### Pool credentials
 

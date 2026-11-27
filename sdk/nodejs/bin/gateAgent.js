@@ -76,6 +76,7 @@ class GateAgent extends pulumi.ComponentResource {
             resourceInputs["imagePull"] = args?.imagePull;
             resourceInputs["interval"] = args?.interval;
             resourceInputs["listenerNamespace"] = args?.listenerNamespace;
+            resourceInputs["manageMaxRunners"] = args?.manageMaxRunners;
             resourceInputs["manageSlots"] = args?.manageSlots;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["networkPolicy"] = args?.networkPolicy;

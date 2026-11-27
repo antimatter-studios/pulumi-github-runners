@@ -55,7 +55,7 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	}
 	// Newer options are optional: a stack that does not set them keeps working.
 	pool := spec.Resources["github-runners:index:Pool"]
-	for resource, inputs := range map[string][]string{"Controller": {"createNamespace"}, "Pool": {"slots", "gateClaim"}, "GateAgent": {"manageSlots"}} {
+	for resource, inputs := range map[string][]string{"Controller": {"createNamespace"}, "Pool": {"slots", "gateClaim", "maxRunnersAgent"}, "GateAgent": {"manageSlots", "manageMaxRunners"}} {
 		r := spec.Resources["github-runners:index:"+resource]
 		for _, name := range inputs {
 			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {

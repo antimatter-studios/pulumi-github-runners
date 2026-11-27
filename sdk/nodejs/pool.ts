@@ -60,8 +60,8 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
-            resourceInputs["listenerScrapeAnnotations"] = args?.listenerScrapeAnnotations;
             resourceInputs["maxRunners"] = args?.maxRunners;
+            resourceInputs["maxRunnersAgent"] = args?.maxRunnersAgent;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
             resourceInputs["memoryRequest"] = args?.memoryRequest;
             resourceInputs["minRunners"] = args?.minRunners;
@@ -132,13 +132,13 @@ export interface PoolArgs {
      */
     image?: string;
     /**
-     * Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.
-     */
-    listenerScrapeAnnotations?: boolean;
-    /**
-     * Jobs at once. Default 2.
+     * Jobs at once. Default 2. With maxRunnersAgent enabled, the ceiling the agent may raise the pool to.
      */
     maxRunners?: number;
+    /**
+     * Let the runner-gate agent set the live maxRunners from the cluster's load, up to maxRunners. Off unless enabled.
+     */
+    maxRunnersAgent?: pulumi.Input<inputs.PoolMaxRunnersAgentArgs | undefined>;
     /**
      * The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */

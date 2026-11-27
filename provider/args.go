@@ -22,6 +22,9 @@ type GateAgentArgs struct {
 	// ManageSlots lets the agent publish each node's runner slots (see PoolSlots). Off by default:
 	// the agent starts in dry-run, and the write permission is granted only when it is asked for.
 	ManageSlots *bool `pulumi:"manageSlots,optional"`
+	// ManageMaxRunners lets the agent set each pool's live maxRunners (see PoolMaxRunnersAgent). Off
+	// by default, for the same reason.
+	ManageMaxRunners *bool `pulumi:"manageMaxRunners,optional"`
 }
 
 // GateAgentNetworkPolicy guards the agent's port: runner namespaces, plus the sources listed here.
@@ -54,6 +57,7 @@ func (a *GateAgentArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Interval, "How often to push a pool snapshot, e.g. 10s. Defaults to the agent's interval.")
 	an.Describe(&a.ImagePull, "Registry credentials for the agent image's pull Secret.")
 	an.Describe(&a.ManageSlots, "Let the agent patch nodes/status, so it can publish each node's runner slots (the extended resource "+defaultSlotResource+") for pools with slots enabled. Default false; nothing broader than nodes/status patch is granted.")
+	an.Describe(&a.ManageMaxRunners, "Let the agent read and patch the AutoscalingRunnerSets in runnerNamespaces, so it can set each pool's live maxRunners under its ceiling. Default false; granted in runnerNamespaces only.")
 	an.Describe(&a.NetworkPolicy, "Who may reach the agent's port 8080. By default only pods in namespaces labelled "+poolNamespaceLabel+", which every Pool's namespace is.")
 }
 
@@ -115,10 +119,11 @@ type PoolArgs struct {
 	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
 	Slots         *PoolSlots         `pulumi:"slots,optional"`
 
-	ListenerPriorityClassName *string             `pulumi:"listenerPriorityClassName,optional"`
-	ListenerResources         *ContainerResources `pulumi:"listenerResources,optional"`
-	GateClaim                 *PoolGateClaim      `pulumi:"gateClaim,optional"`
-	ListenerScrapeAnnotations *bool               `pulumi:"listenerScrapeAnnotations,optional"`
+	ListenerPriorityClassName *string              `pulumi:"listenerPriorityClassName,optional"`
+	ListenerResources         *ContainerResources  `pulumi:"listenerResources,optional"`
+	GateClaim                 *PoolGateClaim       `pulumi:"gateClaim,optional"`
+	ListenerScrapeAnnotations *bool                `pulumi:"listenerScrapeAnnotations,optional"`
+	MaxRunnersAgent           *PoolMaxRunnersAgent `pulumi:"maxRunnersAgent,optional"`
 }
 
 // PoolGateClaim has every job claim its runner-gate reservation before its first step. Exactly one
@@ -126,6 +131,14 @@ type PoolArgs struct {
 type PoolGateClaim struct {
 	URL            *string `pulumi:"url,optional"`
 	AgentNamespace *string `pulumi:"agentNamespace,optional"`
+}
+
+// PoolMaxRunnersAgent hands the pool's live maxRunners to the runner-gate agent (#25). maxRunners
+// becomes the ceiling the agent may raise the pool to; Pulumi writes the live field once, at the
+// floor, when it creates the scale set, and never again, so a deploy does not undo the agent.
+type PoolMaxRunnersAgent struct {
+	Enabled *bool `pulumi:"enabled,optional"`
+	Floor   *int  `pulumi:"floor,optional"`
 }
 
 // PoolSlots makes each runner pod take one of its node's runner slots, an extended resource the
@@ -189,7 +202,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Token, "Alternative fine-grained PAT for ARC and the optional runner group. Set exactly one of app or token. For ARC, grant Self-hosted runners read and write, and repository Administration read.")
 	an.Describe(&a.RunnerGroup, "The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.")
 	an.Describe(&a.MinRunners, "Idle runners kept ready. Default 0.")
-	an.Describe(&a.MaxRunners, "Jobs at once. Default 2.")
+	an.Describe(&a.MaxRunners, "Jobs at once. Default 2. With maxRunnersAgent enabled, the ceiling the agent may raise the pool to.")
 	an.Describe(&a.Image, "The runner image, pinned by digest. Default: the antimatter actions-runner image.")
 	an.Describe(&a.CPULimit, "The runner container's CPU limit. Defaults to no container CPU limit. A pod-level CPU limit takes precedence.")
 	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
@@ -204,6 +217,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
 	an.Describe(&a.ListenerScrapeAnnotations, "Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.")
+	an.Describe(&a.MaxRunnersAgent, "Let the runner-gate agent set the live maxRunners from the cluster's load, up to maxRunners. Off unless enabled.")
 	an.Describe(&a.Slots, "Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.")
 	an.Describe(&a.ListenerPriorityClassName, "The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.")
 	an.Describe(&a.ListenerResources, "The listener container's requests and limits. Default: none.")
@@ -218,6 +232,11 @@ func (c *PoolGateClaim) Annotate(an infer.Annotator) {
 func (s *PoolSlots) Annotate(an infer.Annotator) {
 	an.Describe(&s.Enabled, "Request one runner slot per runner pod. Default false. Only nodes where the GateAgent (manageSlots) has published slots can run the pool's pods; until then they stay Pending and their jobs wait at GitHub.")
 	an.Describe(&s.ResourceName, "The extended resource that counts a node's runner slots. Default "+defaultSlotResource+".")
+}
+
+func (m *PoolMaxRunnersAgent) Annotate(an infer.Annotator) {
+	an.Describe(&m.Enabled, "Let the runner-gate agent own the live maxRunners. Default false. maxRunners then becomes the ceiling, published on the AutoscalingRunnerSet as the annotation "+maxRunnersCeilingAnnotation+".")
+	an.Describe(&m.Floor, "The maxRunners a new scale set starts at, before the agent raises it. Default 1, or minRunners if higher. Written only when the scale set is created: an existing pool keeps its live value, and a later change to floor is not applied.")
 }
 
 func (p *PoolNetworkPolicy) Annotate(an infer.Annotator) {
