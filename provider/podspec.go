@@ -269,7 +269,7 @@ func podTemplate(a PoolArgs) map[string]any {
 			map[string]any{"name": "CONTAINERS_CONF_OVERRIDE", "value": podmanConfigDir + "/containers.conf"},
 		},
 		"resources": map[string]any{
-			"requests": map[string]any{"cpu": "100m", "memory": "128Mi", "ephemeral-storage": "1Gi"},
+			"requests": map[string]any{"cpu": "100m", "memory": orDefault(a.DockerMemoryRequest, "128Mi"), "ephemeral-storage": "1Gi"},
 			"limits":   dockerLimits,
 		},
 		"securityContext": map[string]any{

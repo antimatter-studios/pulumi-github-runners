@@ -92,6 +92,7 @@ type PoolArgs struct {
 	EphemeralStorageRequest *string       `pulumi:"ephemeralStorageRequest,optional"`
 	EphemeralStorageLimit   *string       `pulumi:"ephemeralStorageLimit,optional"`
 	WorkVolumeSize          *string       `pulumi:"workVolumeSize,optional"`
+	DockerMemoryRequest     *string       `pulumi:"dockerMemoryRequest,optional"`
 	DockerMemoryLimit       *string       `pulumi:"dockerMemoryLimit,optional"`
 	DockerStorageLimit      *string       `pulumi:"dockerStorageLimit,optional"`
 	PodResources            *PodResources `pulumi:"podResources,optional"`
@@ -165,6 +166,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Image, "The runner image, pinned by digest. Default: the antimatter actions-runner image.")
 	an.Describe(&a.CPULimit, "The runner container's CPU limit. Defaults to no container CPU limit. A pod-level CPU limit takes precedence.")
 	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
+	an.Describe(&a.DockerMemoryRequest, "The Docker sidecar's memory request. Default 128Mi. Docker builds and job services run here, so with LimitedSwap this request is also what sizes the sidecar's swap.")
 	an.Describe(&a.DockerMemoryLimit, "The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
 	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.")
 	an.Describe(&a.PriorityClassName, "The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.")
