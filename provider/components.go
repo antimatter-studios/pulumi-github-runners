@@ -32,6 +32,7 @@ const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc
 // ControllerArgs are a Controller's inputs: one per cluster.
 type ControllerArgs struct {
 	Namespace         *string       `pulumi:"namespace,optional"`
+	CreateNamespace   *bool         `pulumi:"createNamespace,optional"`
 	Version           *string       `pulumi:"version,optional"`
 	ListenerMetrics   *bool         `pulumi:"listenerMetrics,optional"`
 	Devices           []DeviceOffer `pulumi:"devices,optional"`
@@ -48,6 +49,7 @@ type DeviceOffer struct {
 
 func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Namespace, "Where the controller runs. Default arc-systems.")
+	an.Describe(&a.CreateNamespace, "Create the namespace. Default true. False uses an existing namespace as it is: it must exist. Setting false on a Controller that created its namespace deletes that namespace and everything in it.")
 	an.Describe(&a.Version, "The ARC chart version. Default "+DefaultARCVersion+".")
 	an.Describe(&a.ListenerMetrics, "Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.")
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
@@ -102,12 +104,18 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 	}
 	child := pulumi.Parent(c)
 	namespace := orDefault(a.Namespace, "arc-systems")
-	ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
-		Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(namespace)},
-	}, child)
-	if err != nil {
-		return nil, err
+	// What the namespace's contents wait for: nothing when something else owns it.
+	var namespaceDeps []pulumi.Resource
+	if a.CreateNamespace == nil || *a.CreateNamespace {
+		ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(namespace)},
+		}, child)
+		if err != nil {
+			return nil, err
+		}
+		namespaceDeps = []pulumi.Resource{ns}
 	}
+	inNS := pulumi.DependsOn(namespaceDeps)
 	// A Helm release, not a rendered chart: Helm installs the CRDs before the controller, so a fresh
 	// install does not crash-loop on "no matches for kind EphemeralRunner".
 	release, err := helmv3.NewRelease(ctx, name+"-controller", &helmv3.ReleaseArgs{
@@ -117,7 +125,7 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 		Namespace:       pulumi.String(namespace),
 		CreateNamespace: pulumi.Bool(false),
 		Values:          pulumi.ToMap(controllerValues(a)),
-	}, child, pulumi.DependsOn([]pulumi.Resource{ns}))
+	}, child, inNS)
 	if err != nil {
 		return nil, err
 	}
@@ -159,13 +167,13 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 					},
 				},
 			},
-		}, child, pulumi.DependsOn([]pulumi.Resource{ns}))
+		}, child, inNS)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if a.PrePull != nil {
-		if _, err := newPrePull(ctx, name, namespace, *a.PrePull, child, pulumi.DependsOn([]pulumi.Resource{ns})); err != nil {
+		if _, err := newPrePull(ctx, name, namespace, *a.PrePull, child, inNS); err != nil {
 			return nil, err
 		}
 	}

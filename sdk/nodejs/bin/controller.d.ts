@@ -23,6 +23,10 @@ export declare class Controller extends pulumi.ComponentResource {
  * The set of arguments for constructing a Controller resource.
  */
 export interface ControllerArgs {
+    /**
+     * Create the namespace. Default true. False uses an existing namespace as it is: it must exist. Setting false on a Controller that created its namespace deletes that namespace and everything in it.
+     */
+    createNamespace?: boolean;
     devicePluginImage?: string;
     /**
      * Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.
