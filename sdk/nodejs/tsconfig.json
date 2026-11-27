@@ -19,9 +19,14 @@
         "skipLibCheck": true
     },
     "files": [
+        "controller.ts",
         "forkPrApproval.ts",
         "index.ts",
+        "pool.ts",
         "provider.ts",
+        "types/index.ts",
+        "types/input.ts",
+        "types/output.ts",
         "utilities.ts"
     ]
 }

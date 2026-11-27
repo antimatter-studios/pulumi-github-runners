@@ -5,10 +5,20 @@ import * as pulumi from "@pulumi/pulumi";
 import * as utilities from "./utilities";
 
 // Export members:
+export { ControllerArgs } from "./controller";
+export type Controller = import("./controller").Controller;
+export const Controller: typeof import("./controller").Controller = null as any;
+utilities.lazyLoad(exports, ["Controller"], () => require("./controller"));
+
 export { ForkPrApprovalArgs } from "./forkPrApproval";
 export type ForkPrApproval = import("./forkPrApproval").ForkPrApproval;
 export const ForkPrApproval: typeof import("./forkPrApproval").ForkPrApproval = null as any;
 utilities.lazyLoad(exports, ["ForkPrApproval"], () => require("./forkPrApproval"));
+
+export { PoolArgs } from "./pool";
+export type Pool = import("./pool").Pool;
+export const Pool: typeof import("./pool").Pool = null as any;
+utilities.lazyLoad(exports, ["Pool"], () => require("./pool"));
 
 export { ProviderArgs } from "./provider";
 export type Provider = import("./provider").Provider;
@@ -16,12 +26,23 @@ export const Provider: typeof import("./provider").Provider = null as any;
 utilities.lazyLoad(exports, ["Provider"], () => require("./provider"));
 
 
+// Export sub-modules:
+import * as types from "./types";
+
+export {
+    types,
+};
+
 const _module = {
     version: utilities.getVersion(),
     construct: (name: string, type: string, urn: string): pulumi.Resource => {
         switch (type) {
+            case "github-runners:index:Controller":
+                return new Controller(name, <any>undefined, { urn })
             case "github-runners:index:ForkPrApproval":
                 return new ForkPrApproval(name, <any>undefined, { urn })
+            case "github-runners:index:Pool":
+                return new Pool(name, <any>undefined, { urn })
             default:
                 throw new Error(`unknown resource type ${type}`);
         }
