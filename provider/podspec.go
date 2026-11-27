@@ -103,12 +103,16 @@ JS
 `
 
 // jobStartedScript is the hook the runner calls: the fork check first, when the pool asks for it,
-// then the pool's own script. Either failing fails the job.
-func jobStartedScript(rejectForks bool, custom bool) string {
+// then the runner-gate claim, then the pool's own script. Any of them failing fails the job.
+func jobStartedScript(rejectForks, claim, custom bool) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/bash\nset -euo pipefail\n")
 	if rejectForks {
 		b.WriteString(hooksDir + "/reject-forks.sh\n")
+	}
+	// After the fork check, so a refused job claims nothing.
+	if claim {
+		b.WriteString(hooksDir + "/" + gateClaimFile + "\n")
 	}
 	if custom {
 		b.WriteString(hooksDir + "/custom.sh\n")
@@ -116,11 +120,11 @@ func jobStartedScript(rejectForks bool, custom bool) string {
 	return b.String()
 }
 
-// hookFiles is the ConfigMap the hook directory is mounted from.
-func hookFiles(h PoolHook) (map[string]string, error) {
+// hookFiles is the ConfigMap the hook directory is mounted from. claim adds the runner-gate claim.
+func hookFiles(h PoolHook, claim bool) (map[string]string, error) {
 	files := map[string]string{}
 	for name, content := range h.Files {
-		if name == jobStartedHook || name == "reject-forks.sh" || name == "custom.sh" || !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(name) {
+		if name == jobStartedHook || name == "reject-forks.sh" || name == "custom.sh" || (claim && name == gateClaimFile) || !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(name) {
 			return nil, fmt.Errorf("hook file %q: a reserved or invalid name", name)
 		}
 		files[name] = content
@@ -130,10 +134,13 @@ func hookFiles(h PoolHook) (map[string]string, error) {
 	if rejectForks {
 		files["reject-forks.sh"] = rejectForksHook
 	}
+	if claim {
+		files[gateClaimFile] = gateClaimHook
+	}
 	if custom {
 		files["custom.sh"] = *h.Script
 	}
-	files[jobStartedHook] = jobStartedScript(rejectForks, custom)
+	files[jobStartedHook] = jobStartedScript(rejectForks, claim, custom)
 	return files, nil
 }
 
@@ -203,8 +210,12 @@ func podTemplate(a PoolArgs) map[string]any {
 		// podman serves the classic build API; BuildKit needs cgroups.
 		"DOCKER_BUILDKIT": "0",
 	}
+	// gateClaim owns the claim script's URL, so a leftover hook.env value cannot point it elsewhere.
+	if a.GateClaim != nil {
+		env[gateClaimEnv] = gateClaimURL(*a.GateClaim)
+	}
 	// The pool's job defaults first, then the hook's own variables, then the runner's, which a pool
-	// must not override (the hook path, Docker's socket).
+	// must not override (the hook path, Docker's socket, the claim URL).
 	merged := map[string]string{}
 	for k, v := range a.Env {
 		merged[k] = v
@@ -468,8 +479,13 @@ func checkPool(a PoolArgs) error {
 	if a.RunnerGroup != nil && orgOf(a.ConfigURL) == "" {
 		return fmt.Errorf("pool %s: a runner group needs an organisation configUrl", a.ID)
 	}
+	if a.GateClaim != nil {
+		if err := checkGateClaim(*a.GateClaim); err != nil {
+			return fmt.Errorf("pool %s: %w", a.ID, err)
+		}
+	}
 	if a.Hook != nil {
-		if _, err := hookFiles(*a.Hook); err != nil {
+		if _, err := hookFiles(*a.Hook, a.GateClaim != nil); err != nil {
 			return fmt.Errorf("pool %s: %w", a.ID, err)
 		}
 	}

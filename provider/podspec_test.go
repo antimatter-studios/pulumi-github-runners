@@ -377,14 +377,14 @@ func TestTheHookIsMountedAndCalledBeforeEveryJob(t *testing.T) {
 }
 
 func TestHookFiles(t *testing.T) {
-	files, err := hookFiles(PoolHook{})
+	files, err := hookFiles(PoolHook{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if files[jobStartedHook] != "#!/bin/bash\nset -euo pipefail\n/etc/arc-hooks/reject-forks.sh\n" || files["reject-forks.sh"] == "" {
 		t.Fatalf("default hook: %q", files[jobStartedHook])
 	}
-	files, err = hookFiles(PoolHook{RejectForks: bp(false), Script: sp("#!/bin/sh\nexit 0\n"), Files: map[string]string{"allowed-actors": "christhomas\n"}})
+	files, err = hookFiles(PoolHook{RejectForks: bp(false), Script: sp("#!/bin/sh\nexit 0\n"), Files: map[string]string{"allowed-actors": "christhomas\n"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +395,7 @@ func TestHookFiles(t *testing.T) {
 		t.Fatalf("hook %q", files[jobStartedHook])
 	}
 	for _, bad := range []string{jobStartedHook, "reject-forks.sh", "custom.sh", "../x", "a/b"} {
-		if _, err := hookFiles(PoolHook{Files: map[string]string{bad: ""}}); err == nil {
+		if _, err := hookFiles(PoolHook{Files: map[string]string{bad: ""}}, false); err == nil {
 			t.Errorf("file name %q accepted", bad)
 		}
 	}
@@ -460,6 +460,113 @@ func TestCheckPool(t *testing.T) {
 		if err := checkPool(a); err != nil {
 			t.Errorf("%s refused: %v", label, err)
 		}
+	}
+}
+
+// gateClaim sets RUNNER_GATE_URL from the URL or the agent's namespace, over anything the pool or its
+// hook set; without it the variable is the pool's own business.
+func TestGateClaimSetsTheClaimURL(t *testing.T) {
+	for name, c := range map[string]struct {
+		claim PoolGateClaim
+		want  string
+	}{
+		"url":               {PoolGateClaim{URL: sp("http://gate.example:9000")}, "http://gate.example:9000"},
+		"url with a slash":  {PoolGateClaim{URL: sp("http://gate.example:9000/")}, "http://gate.example:9000"},
+		"agent namespace":   {PoolGateClaim{AgentNamespace: sp("arc-systems")}, "http://runner-gate-agent.arc-systems.svc:8080"},
+		"another namespace": {PoolGateClaim{AgentNamespace: sp("gate")}, "http://runner-gate-agent.gate.svc:8080"},
+	} {
+		a := basePool()
+		a.GateClaim = &c.claim
+		a.Env = map[string]string{"RUNNER_GATE_URL": "http://pool-env"}
+		a.Hook = &PoolHook{Env: map[string]string{"RUNNER_GATE_URL": "http://hook-env"}}
+		if got := env(t, container(t, podTemplate(a), "runner"))["RUNNER_GATE_URL"]; got != c.want {
+			t.Errorf("%s: RUNNER_GATE_URL %q, want %q", name, got, c.want)
+		}
+	}
+	if _, ok := env(t, container(t, podTemplate(basePool()), "runner"))["RUNNER_GATE_URL"]; ok {
+		t.Fatal("no gateClaim: no claim URL")
+	}
+}
+
+func TestGateClaimHookFiles(t *testing.T) {
+	files, err := hookFiles(PoolHook{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files[jobStartedHook] != "#!/bin/bash\nset -euo pipefail\n/etc/arc-hooks/reject-forks.sh\n/etc/arc-hooks/gate-claim.sh\n" ||
+		!strings.Contains(files["gate-claim.sh"], "# Claim this job's reservation.") {
+		t.Fatalf("hook %q", files[jobStartedHook])
+	}
+	files, err = hookFiles(PoolHook{RejectForks: bp(false), Script: sp("#!/bin/sh\n")}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files[jobStartedHook] != "#!/bin/bash\nset -euo pipefail\n/etc/arc-hooks/gate-claim.sh\n/etc/arc-hooks/custom.sh\n" {
+		t.Fatalf("hook %q", files[jobStartedHook])
+	}
+	if _, err := hookFiles(PoolHook{Files: map[string]string{"gate-claim.sh": ""}}, true); err == nil {
+		t.Fatal("with gateClaim the name is the plugin's")
+	}
+	// A pool that mounts its own copy, without gateClaim, keeps working.
+	own, err := hookFiles(PoolHook{Files: map[string]string{"gate-claim.sh": "mine"}}, false)
+	if err != nil || own["gate-claim.sh"] != "mine" || strings.Contains(own[jobStartedHook], "gate-claim.sh") {
+		t.Fatalf("err %v, files %v", err, own)
+	}
+}
+
+// The runners' egress policy has to let them reach the agent they claim from.
+func TestGateClaimNamespaceIsTheNetworkPolicysDefault(t *testing.T) {
+	a := basePool()
+	a.NetworkPolicy = &PoolNetworkPolicy{}
+	if got := poolNetworkPolicy(a).GateAgentNamespace; got != nil {
+		t.Fatalf("no gateClaim: %q", *got)
+	}
+	a.GateClaim = &PoolGateClaim{AgentNamespace: sp("gate")}
+	if got := poolNetworkPolicy(a).GateAgentNamespace; got == nil || *got != "gate" {
+		t.Fatalf("gate agent namespace %v", got)
+	}
+	if a.NetworkPolicy.GateAgentNamespace != nil {
+		t.Fatal("the caller's args were changed")
+	}
+	a.NetworkPolicy.GateAgentNamespace = sp("elsewhere")
+	if got := poolNetworkPolicy(a).GateAgentNamespace; got == nil || *got != "elsewhere" {
+		t.Fatalf("an explicit namespace wins: %v", got)
+	}
+}
+
+func TestCheckGateClaim(t *testing.T) {
+	ok := basePool()
+	ok.Token = stringInput("t")
+	for name, claim := range map[string]PoolGateClaim{
+		"url":             {URL: sp("https://gate.example")},
+		"agent namespace": {AgentNamespace: sp("arc-systems")},
+	} {
+		a := ok
+		a.GateClaim = &claim
+		if err := checkPool(a); err != nil {
+			t.Errorf("%s refused: %v", name, err)
+		}
+	}
+	for name, claim := range map[string]PoolGateClaim{
+		"neither":            {},
+		"empty strings":      {URL: sp(""), AgentNamespace: sp("")},
+		"both":               {URL: sp("http://gate:8080"), AgentNamespace: sp("arc-systems")},
+		"url without host":   {URL: sp("http://")},
+		"url without scheme": {URL: sp("gate:8080")},
+		"url with a query":   {URL: sp("http://gate:8080?x=1")},
+		"bad namespace":      {AgentNamespace: sp("Arc.Systems")},
+	} {
+		a := ok
+		a.GateClaim = &claim
+		if err := checkPool(a); err == nil || !strings.Contains(err.Error(), "gateClaim") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	reserved := ok
+	reserved.GateClaim = &PoolGateClaim{AgentNamespace: sp("arc-systems")}
+	reserved.Hook = &PoolHook{Files: map[string]string{"gate-claim.sh": ""}}
+	if err := checkPool(reserved); err == nil {
+		t.Error("a hook file over the claim script: accepted")
 	}
 }
 
