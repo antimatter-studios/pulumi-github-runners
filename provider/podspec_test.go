@@ -214,6 +214,7 @@ func TestTmpAndTheCheckoutAreSharedWithTheSidecar(t *testing.T) {
 	}
 }
 
+// No CPU or memory limit by default: the owner's decision, runners use whatever is free.
 func TestSizingDefaultsAndNoCPULimitUnlessAsked(t *testing.T) {
 	r := container(t, podTemplate(basePool()), "runner")["resources"].(map[string]any)
 	if r["requests"].(map[string]any)["cpu"] != "100m" || r["requests"].(map[string]any)["memory"] != "256Mi" {
@@ -223,8 +224,11 @@ func TestSizingDefaultsAndNoCPULimitUnlessAsked(t *testing.T) {
 	if _, ok := lim["cpu"]; ok {
 		t.Fatal("no CPU limit by default")
 	}
-	if lim["memory"] != "4Gi" || lim["ephemeral-storage"] != "10Gi" {
-		t.Fatalf("limits %v", lim)
+	if _, ok := lim["memory"]; ok || lim["ephemeral-storage"] != "10Gi" {
+		t.Fatalf("limits %v: no memory limit by default, only the disk limit", lim)
+	}
+	if dl := container(t, podTemplate(basePool()), "docker")["resources"].(map[string]any)["limits"].(map[string]any); dl["memory"] != nil || dl["ephemeral-storage"] != "20Gi" {
+		t.Fatalf("sidecar limits %v: no memory limit by default, only the disk limit", dl)
 	}
 	a := basePool()
 	a.CPULimit, a.DockerMemoryLimit = sp("2"), sp("6Gi")
@@ -260,6 +264,7 @@ func TestPodResourcesAreOneSharedBudget(t *testing.T) {
 		}
 	}
 	t.Run("CPU limit only", func(t *testing.T) {
+		a.MemoryLimit, a.DockerMemoryLimit = sp("4Gi"), sp("4Gi")
 		a.PodResources = &PodResources{CPULimit: sp("4"), MemoryRequest: sp("512Mi")}
 		tpl := podTemplate(a)
 		for _, name := range []string{"runner", "docker"} {
@@ -457,4 +462,28 @@ func gnuSedPath(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	return bin
+}
+
+// A pool's job environment reaches every job, and cannot override what the runner itself depends on.
+func TestPoolEnvIsEveryJobsDefault(t *testing.T) {
+	a := basePool()
+	a.Env = map[string]string{"GOMAXPROCS": "2", "FLTH_RESOURCE_PROFILE": "low", "DOCKER_HOST": "tcp://elsewhere"}
+	e := env(t, container(t, podTemplate(a), "runner"))
+	if e["GOMAXPROCS"] != "2" || e["FLTH_RESOURCE_PROFILE"] != "low" {
+		t.Fatalf("env %v", e)
+	}
+	if e["DOCKER_HOST"] != "unix:///run/docker/docker.sock" {
+		t.Fatalf("a pool overrode DOCKER_HOST: %v", e["DOCKER_HOST"])
+	}
+}
+
+func TestPriorityClassIsOptional(t *testing.T) {
+	if has(t, podTemplate(basePool()), "spec", "priorityClassName") {
+		t.Fatal("no priority class unless asked")
+	}
+	a := basePool()
+	a.PriorityClassName = sp("ci-runner")
+	if get(t, podTemplate(a), "spec", "priorityClassName") != "ci-runner" {
+		t.Fatal("priorityClassName not applied")
+	}
 }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `Pool.env`: every job's default environment, e.g. parallelism hints (GOMAXPROCS, CARGO_BUILD_JOBS,
+  FLTH_RESOURCE_PROFILE) so jobs without CPU limits stop sizing themselves to the whole node.
+- Runner pods have no CPU or memory limit unless a pool sets one; the memory limits that defaulted
+  to 4Gi on the runner and the podman sidecar are gone. Disk (ephemeral-storage) limits stay.
 - The plugin, `pulumi-resource-github-runners`, with a generated TypeScript SDK
   (`@antimatter-studios/github-runners`).
 - `ForkPrApproval`: an organisation's fork pull request approval policy. Deleting it leaves the

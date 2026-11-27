@@ -36,9 +36,14 @@ type PoolArgs struct {
 	PodResources            *PodResources `pulumi:"podResources,optional"`
 
 	TopologySpread     *bool             `pulumi:"topologySpread,optional"`
+	PriorityClassName  *string           `pulumi:"priorityClassName,optional"`
 	Devices            map[string]string `pulumi:"devices,optional"`
 	SupplementalGroups []int             `pulumi:"supplementalGroups,optional"`
 
+	// Env is every job's default environment, which a job can override. Its use is telling jobs how
+	// much of the machine to assume: with no CPU limit, nproc and every tool's default parallelism
+	// see the whole node, so two jobs each sized to all of it overload the node.
+	Env           map[string]string  `pulumi:"env,optional"`
 	Hook          *PoolHook          `pulumi:"hook,optional"`
 	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
 }
@@ -97,12 +102,14 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.MaxRunners, "Jobs at once. Default 2.")
 	an.Describe(&a.Image, "The runner image, pinned by digest. Default: the antimatter actions-runner image.")
 	an.Describe(&a.CPULimit, "The runner container's CPU limit. Defaults to no container CPU limit. A pod-level CPU limit takes precedence.")
-	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.")
-	an.Describe(&a.DockerMemoryLimit, "The Docker sidecar's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.")
+	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
+	an.Describe(&a.DockerMemoryLimit, "The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
 	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.")
+	an.Describe(&a.PriorityClassName, "The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.")
 	an.Describe(&a.TopologySpread, "Spread the pool's runners evenly across nodes, hard. For multi-node clusters.")
 	an.Describe(&a.Devices, "Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {\"devic.es/fuse\": \"1\"}.")
 	an.Describe(&a.SupplementalGroups, "Groups the runner pod's processes join.")
+	an.Describe(&a.Env, "Every job's default environment, which a job can override, e.g. {GOMAXPROCS: \"2\", CARGO_BUILD_JOBS: \"2\", FLTH_RESOURCE_PROFILE: \"low\"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.")
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
 }

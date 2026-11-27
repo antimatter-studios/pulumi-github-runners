@@ -54,6 +54,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["devices"] = args?.devices;
             resourceInputs["dockerMemoryLimit"] = args?.dockerMemoryLimit;
             resourceInputs["dockerStorageLimit"] = args?.dockerStorageLimit;
+            resourceInputs["env"] = args?.env;
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
@@ -66,6 +67,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
             resourceInputs["poolId"] = args?.poolId;
+            resourceInputs["priorityClassName"] = args?.priorityClassName;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
@@ -104,10 +106,14 @@ export interface PoolArgs {
      */
     devices?: pulumi.Input<{[key: string]: string} | undefined>;
     /**
-     * The Docker sidecar's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.
+     * The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
     dockerMemoryLimit?: string;
     dockerStorageLimit?: string;
+    /**
+     * Every job's default environment, which a job can override, e.g. {GOMAXPROCS: "2", CARGO_BUILD_JOBS: "2", FLTH_RESOURCE_PROFILE: "low"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.
+     */
+    env?: pulumi.Input<{[key: string]: string} | undefined>;
     ephemeralStorageLimit?: string;
     ephemeralStorageRequest?: string;
     /**
@@ -123,7 +129,7 @@ export interface PoolArgs {
      */
     maxRunners?: number;
     /**
-     * The runner container's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.
+     * The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
     memoryLimit?: string;
     memoryRequest?: string;
@@ -144,6 +150,10 @@ export interface PoolArgs {
      * A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.
      */
     poolId: string;
+    /**
+     * The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.
+     */
+    priorityClassName?: string;
     /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */
