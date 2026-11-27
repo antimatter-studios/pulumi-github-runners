@@ -42,6 +42,12 @@ export interface GitHubAppArgs {
     installationId: pulumi.Input<string>;
     privateKey: pulumi.Input<string>;
 }
+export interface GiteaContainerResourcesArgs {
+    cpuLimit?: pulumi.Input<string | undefined>;
+    cpuRequest?: pulumi.Input<string | undefined>;
+    memoryLimit?: pulumi.Input<string | undefined>;
+    memoryRequest?: pulumi.Input<string | undefined>;
+}
 export interface NetworkAllowArgs {
     namespaceLabels?: pulumi.Input<{
         [key: string]: pulumi.Input<string>;

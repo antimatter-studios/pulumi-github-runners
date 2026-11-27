@@ -20,6 +20,11 @@ export type GateAgent = import("./gateAgent").GateAgent;
 export const GateAgent: typeof import("./gateAgent").GateAgent = null as any;
 utilities.lazyLoad(exports, ["GateAgent"], () => require("./gateAgent"));
 
+export { GiteaRunnerPoolArgs } from "./giteaRunnerPool";
+export type GiteaRunnerPool = import("./giteaRunnerPool").GiteaRunnerPool;
+export const GiteaRunnerPool: typeof import("./giteaRunnerPool").GiteaRunnerPool = null as any;
+utilities.lazyLoad(exports, ["GiteaRunnerPool"], () => require("./giteaRunnerPool"));
+
 export { PoolArgs } from "./pool";
 export type Pool = import("./pool").Pool;
 export const Pool: typeof import("./pool").Pool = null as any;
@@ -48,6 +53,8 @@ const _module = {
                 return new ForkPrApproval(name, <any>undefined, { urn })
             case "github-runners:index:GateAgent":
                 return new GateAgent(name, <any>undefined, { urn })
+            case "github-runners:index:GiteaRunnerPool":
+                return new GiteaRunnerPool(name, <any>undefined, { urn })
             case "github-runners:index:Pool":
                 return new Pool(name, <any>undefined, { urn })
             default:

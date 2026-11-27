@@ -36,7 +36,7 @@ func providerWith(api string) p.Provider {
 func options(api string) infer.Options {
 	return infer.NewProviderBuilder().
 		WithResources(infer.Resource(&ForkPrApproval{api: api})).
-		WithComponents(infer.ComponentF(NewController), infer.ComponentF(NewPool), infer.ComponentF(NewGateAgent)).
+		WithComponents(infer.ComponentF(NewController), infer.ComponentF(NewPool), infer.ComponentF(NewGateAgent), infer.ComponentF(NewGiteaRunnerPool)).
 		// Every type is github-runners:index:<Type>. Without this the module would be the Go
 		// package's directory, provider.
 		WithModuleMap(map[tokens.ModuleName]tokens.ModuleName{"provider": "index"}).

@@ -7,6 +7,9 @@ export declare const ForkPrApproval: typeof import("./forkPrApproval").ForkPrApp
 export { GateAgentArgs } from "./gateAgent";
 export type GateAgent = import("./gateAgent").GateAgent;
 export declare const GateAgent: typeof import("./gateAgent").GateAgent;
+export { GiteaRunnerPoolArgs } from "./giteaRunnerPool";
+export type GiteaRunnerPool = import("./giteaRunnerPool").GiteaRunnerPool;
+export declare const GiteaRunnerPool: typeof import("./giteaRunnerPool").GiteaRunnerPool;
 export { PoolArgs } from "./pool";
 export type Pool = import("./pool").Pool;
 export declare const Pool: typeof import("./pool").Pool;

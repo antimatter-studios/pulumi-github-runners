@@ -141,6 +141,47 @@ func podmanFiles() map[string]string {
 	return map[string]string{"storage.conf": podmanStorageConf, "containers.conf": podmanContainersConf, "crun": crunWrapper}
 }
 
+// podmanCapabilities are namespaced to the pod: mounts and bridges for nested containers.
+// SYS_PTRACE: docker exec and health checks open a container process's namespaces.
+var podmanCapabilities = []string{"SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE"}
+
+// podmanServiceCommand serves podman's Docker-compatible API on <socketDir>/docker.sock. catatonit
+// reaps the DNS server and other daemons podman leaves behind. podman schedules health checks with
+// systemd timers, and there is no systemd here, so without the loop a services: container stays
+// "starting" and the job never starts.
+func podmanServiceCommand(socketDir string) []string {
+	socket := socketDir + "/docker.sock"
+	return []string{"/usr/libexec/podman/catatonit", "--", "sh", "-c",
+		"(until [ -S " + socket + " ]; do sleep 0.2; done; chmod 666 " + socket + ") & " +
+			"(while sleep 2; do for c in $(podman ps -q --filter health=starting --filter health=unhealthy --filter health=healthy); do podman healthcheck run \"$c\" >/dev/null 2>&1; done; done) & " +
+			"exec podman system service --time=0 unix://" + socket}
+}
+
+// podmanEnv points podman at the mounted configuration (podmanFiles), as name and value pairs in a
+// fixed order: reordering them would roll every pool's runners.
+func podmanEnv() [][2]string {
+	return [][2]string{
+		{"CONTAINERS_STORAGE_CONF", podmanConfigDir + "/storage.conf"},
+		{"CONTAINERS_CONF_OVERRIDE", podmanConfigDir + "/containers.conf"},
+	}
+}
+
+func podmanEnvList() []any {
+	var out []any
+	for _, e := range podmanEnv() {
+		out = append(out, map[string]any{"name": e[0], "value": e[1]})
+	}
+	return out
+}
+
+func toAny(values []string) []any {
+	out := make([]any, len(values))
+	for i, v := range values {
+		out[i] = v
+	}
+	return out
+}
+
 func orDefault(v *string, d string) string {
 	if v == nil || *v == "" {
 		return d
@@ -263,19 +304,10 @@ func podTemplate(a PoolArgs) map[string]any {
 	}
 
 	docker := map[string]any{
-		"name":  "docker",
-		"image": orDefault(a.PodmanImage, DefaultPodmanImage),
-		// catatonit reaps the DNS server and other daemons podman leaves behind. podman schedules
-		// health checks with systemd timers, and there is no systemd here, so without the loop a
-		// services: container stays "starting" and the job never starts.
-		"command": []any{"/usr/libexec/podman/catatonit", "--", "sh", "-c",
-			"(until [ -S " + dockerSocketDir + "/docker.sock ]; do sleep 0.2; done; chmod 666 " + dockerSocketDir + "/docker.sock) & " +
-				"(while sleep 2; do for c in $(podman ps -q --filter health=starting --filter health=unhealthy --filter health=healthy); do podman healthcheck run \"$c\" >/dev/null 2>&1; done; done) & " +
-				"exec podman system service --time=0 unix://" + dockerSocketDir + "/docker.sock"},
-		"env": []any{
-			map[string]any{"name": "CONTAINERS_STORAGE_CONF", "value": podmanConfigDir + "/storage.conf"},
-			map[string]any{"name": "CONTAINERS_CONF_OVERRIDE", "value": podmanConfigDir + "/containers.conf"},
-		},
+		"name":    "docker",
+		"image":   orDefault(a.PodmanImage, DefaultPodmanImage),
+		"command": toAny(podmanServiceCommand(dockerSocketDir)),
+		"env":     podmanEnvList(),
 		"resources": map[string]any{
 			"requests": map[string]any{"cpu": "100m", "memory": orDefault(a.DockerMemoryRequest, "128Mi"), "ephemeral-storage": "1Gi"},
 			"limits":   dockerLimits,
@@ -285,12 +317,10 @@ func podTemplate(a PoolArgs) map[string]any {
 			"runAsUser":                0,
 			"privileged":               false,
 			"allowPrivilegeEscalation": true,
-			// Namespaced to the pod: mounts and bridges for nested containers. SYS_PTRACE: docker exec
-			// and health checks open a container process's namespaces.
-			"capabilities":    map[string]any{"add": []any{"SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE"}},
-			"procMount":       "Unmasked",
-			"seccompProfile":  map[string]any{"type": "Unconfined"},
-			"appArmorProfile": map[string]any{"type": "Unconfined"},
+			"capabilities":             map[string]any{"add": toAny(podmanCapabilities)},
+			"procMount":                "Unmasked",
+			"seccompProfile":           map[string]any{"type": "Unconfined"},
+			"appArmorProfile":          map[string]any{"type": "Unconfined"},
 		},
 		"volumeMounts": []any{
 			// Same path as the runner, so `docker run -v $PWD:/src` finds the checkout.
