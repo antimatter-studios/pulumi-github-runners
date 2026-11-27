@@ -294,9 +294,12 @@ func TestDevicesComeFromDevicePluginsNotHostPaths(t *testing.T) {
 	a := basePool()
 	a.Devices = map[string]string{"devic.es/fuse": "1", "devic.es/kvm": "1"}
 	tpl := podTemplate(a)
-	lim := container(t, tpl, "runner")["resources"].(map[string]any)["limits"].(map[string]any)
-	if lim["devic.es/fuse"] != "1" || lim["devic.es/kvm"] != "1" {
-		t.Fatalf("limits %v", lim)
+	for _, name := range []string{"runner", "docker"} {
+		// The sidecar needs them too: containers a job starts with `docker run --device` run there.
+		lim := container(t, tpl, name)["resources"].(map[string]any)["limits"].(map[string]any)
+		if lim["devic.es/fuse"] != "1" || lim["devic.es/kvm"] != "1" {
+			t.Fatalf("%s limits %v", name, lim)
+		}
 	}
 	raw, _ := json.Marshal(tpl)
 	if strings.Contains(string(raw), "hostPath") {

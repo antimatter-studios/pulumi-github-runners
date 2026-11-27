@@ -100,7 +100,7 @@ export interface PoolArgs {
     cpuLimit?: string;
     cpuRequest?: string;
     /**
-     * Device-plugin resources each runner gets, e.g. {"devic.es/fuse": "1"}.
+     * Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {"devic.es/fuse": "1"}.
      */
     devices?: pulumi.Input<{[key: string]: string} | undefined>;
     /**

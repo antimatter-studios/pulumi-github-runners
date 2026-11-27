@@ -181,8 +181,12 @@ func podTemplate(a PoolArgs) map[string]any {
 		devices = append(devices, res)
 	}
 	sort.Strings(devices)
+	// Both containers get each device: jobs use it directly in the runner, and through containers
+	// the podman sidecar runs (`docker run --device /dev/kvm`). So a pod takes the count twice, which
+	// the device plugin's count has to allow for.
 	for _, res := range devices {
 		runnerLimits[res] = a.Devices[res]
+		dockerLimits[res] = a.Devices[res]
 	}
 
 	env := map[string]string{

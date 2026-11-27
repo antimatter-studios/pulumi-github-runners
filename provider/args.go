@@ -99,7 +99,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.DockerMemoryLimit, "The Docker sidecar's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.")
 	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.")
 	an.Describe(&a.TopologySpread, "Spread the pool's runners evenly across nodes, hard. For multi-node clusters.")
-	an.Describe(&a.Devices, "Device-plugin resources each runner gets, e.g. {\"devic.es/fuse\": \"1\"}.")
+	an.Describe(&a.Devices, "Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {\"devic.es/fuse\": \"1\"}.")
 	an.Describe(&a.SupplementalGroups, "Groups the runner pod's processes join.")
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
