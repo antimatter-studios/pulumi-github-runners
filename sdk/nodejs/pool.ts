@@ -41,8 +41,8 @@ export class Pool extends pulumi.ComponentResource {
             if (args?.configUrl === undefined && !opts.urn) {
                 throw new Error("Missing required property 'configUrl'");
             }
-            if (args?.id === undefined && !opts.urn) {
-                throw new Error("Missing required property 'id'");
+            if (args?.poolId === undefined && !opts.urn) {
+                throw new Error("Missing required property 'poolId'");
             }
             if (args?.scaleSetName === undefined && !opts.urn) {
                 throw new Error("Missing required property 'scaleSetName'");
@@ -57,7 +57,6 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
-            resourceInputs["id"] = args?.id;
             resourceInputs["image"] = args?.image;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
@@ -66,6 +65,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["networkPolicy"] = args?.networkPolicy;
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
+            resourceInputs["poolId"] = args?.poolId;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
@@ -115,10 +115,6 @@ export interface PoolArgs {
      */
     hook?: pulumi.Input<inputs.PoolHookArgs | undefined>;
     /**
-     * A DNS-safe key for the pool; its runners live in namespace arc-runners-<id>.
-     */
-    id: string;
-    /**
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
     image?: string;
@@ -144,6 +140,10 @@ export interface PoolArgs {
      */
     podResources?: pulumi.Input<inputs.PodResourcesArgs | undefined>;
     podmanImage?: string;
+    /**
+     * A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.
+     */
+    poolId: string;
     /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */

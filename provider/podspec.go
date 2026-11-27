@@ -376,7 +376,7 @@ var (
 // checkPool refuses a pool that cannot work, before anything is created.
 func checkPool(a PoolArgs) error {
 	if !poolIDPattern.MatchString(a.ID) {
-		return fmt.Errorf("pool id %q must be a DNS-safe name of at most 40 characters", a.ID)
+		return fmt.Errorf("poolId %q must be a DNS-safe name of at most 40 characters", a.ID)
 	}
 	if !configURLPattern.MatchString(strings.TrimSuffix(a.ConfigURL, "/")) {
 		return fmt.Errorf("pool %s: configUrl %q must be a GitHub organisation or repository URL", a.ID, a.ConfigURL)

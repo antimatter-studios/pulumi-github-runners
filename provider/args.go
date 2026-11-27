@@ -7,7 +7,9 @@ import (
 
 // PoolArgs are a Pool's inputs: one organisation's runners on one machine.
 type PoolArgs struct {
-	ID           string `pulumi:"id"`
+	// Not `id`: Pulumi reserves that property name on every resource and strips it from a
+	// component's inputs, so a pool declared with `id` arrived with an empty one.
+	ID           string `pulumi:"poolId"`
 	ConfigURL    string `pulumi:"configUrl"`
 	ScaleSetName string `pulumi:"scaleSetName"`
 
@@ -85,7 +87,7 @@ type NetworkAllow struct {
 }
 
 func (a *PoolArgs) Annotate(an infer.Annotator) {
-	an.Describe(&a.ID, "A DNS-safe key for the pool; its runners live in namespace arc-runners-<id>.")
+	an.Describe(&a.ID, "A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.")
 	an.Describe(&a.ConfigURL, "https://github.com/<org>, or a repository URL for repository runners.")
 	an.Describe(&a.ScaleSetName, "The runs-on label: <machine>-<os>-<arch>, e.g. ryzen-linux-x64.")
 	an.Describe(&a.App, "Recommended GitHub App credential for ARC and the optional runner group. Set exactly one of app or token. For runner group management, the App needs organisation Self-hosted runners: write.")

@@ -55,10 +55,6 @@ export interface PoolArgs {
      */
     hook?: pulumi.Input<inputs.PoolHookArgs | undefined>;
     /**
-     * A DNS-safe key for the pool; its runners live in namespace arc-runners-<id>.
-     */
-    id: string;
-    /**
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
     image?: string;
@@ -84,6 +80,10 @@ export interface PoolArgs {
      */
     podResources?: pulumi.Input<inputs.PodResourcesArgs | undefined>;
     podmanImage?: string;
+    /**
+     * A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.
+     */
+    poolId: string;
     /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */

@@ -58,8 +58,8 @@ class Pool extends pulumi.ComponentResource {
             if (args?.configUrl === undefined && !opts.urn) {
                 throw new Error("Missing required property 'configUrl'");
             }
-            if (args?.id === undefined && !opts.urn) {
-                throw new Error("Missing required property 'id'");
+            if (args?.poolId === undefined && !opts.urn) {
+                throw new Error("Missing required property 'poolId'");
             }
             if (args?.scaleSetName === undefined && !opts.urn) {
                 throw new Error("Missing required property 'scaleSetName'");
@@ -74,7 +74,6 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
-            resourceInputs["id"] = args?.id;
             resourceInputs["image"] = args?.image;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
@@ -83,6 +82,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["networkPolicy"] = args?.networkPolicy;
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
+            resourceInputs["poolId"] = args?.poolId;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
