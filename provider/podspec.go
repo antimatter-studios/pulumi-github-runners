@@ -167,6 +167,10 @@ func podTemplate(a PoolArgs) map[string]any {
 		"memory":            orDefault(a.MemoryLimit, "4Gi"),
 		"ephemeral-storage": orDefault(a.EphemeralStorageLimit, "10Gi"),
 	}
+	dockerLimits := map[string]any{
+		"memory":            orDefault(a.DockerMemoryLimit, "4Gi"),
+		"ephemeral-storage": orDefault(a.DockerStorageLimit, "20Gi"),
+	}
 	// CPU is a guideline by default: a small request places the pod and weights it under contention,
 	// and no limit lets a job use whatever is free. A pool on a node that stalls under load sets one.
 	if a.CPULimit != nil && *a.CPULimit != "" {
@@ -194,10 +198,14 @@ func podTemplate(a PoolArgs) map[string]any {
 	}
 
 	runner := map[string]any{
-		"name": "runner",
-		// No command: the image starts run.sh and installs nothing at start.
+		"name":  "runner",
 		"image": orDefault(a.Image, DefaultRunnerImage),
-		"env":   envList(env),
+		// When pods scale from zero, the homelab's first Docker step ran about a second
+		// before podman created the socket ("dial unix /run/docker/docker.sock: no such file
+		// or directory"). The image's run.sh ignores RUNNER_WAIT_FOR_DOCKER_IN_SECONDS.
+		// Wait for the socket here as in homelab-server PR #161.
+		"command": []any{"sh", "-c", "for i in $(seq 1 120); do [ -S " + dockerSocketDir + "/docker.sock ] && break; sleep 0.5; done; exec /home/runner/run.sh"},
+		"env":     envList(env),
 		// Memory too: reserve little, cap at the limit. When a node runs out, the kernel and kubelet
 		// kill whatever is furthest over its request, so a CI job dies before the cluster's services.
 		"resources": map[string]any{
@@ -240,10 +248,7 @@ func podTemplate(a PoolArgs) map[string]any {
 		},
 		"resources": map[string]any{
 			"requests": map[string]any{"cpu": "100m", "memory": "128Mi", "ephemeral-storage": "1Gi"},
-			"limits": map[string]any{
-				"memory":            orDefault(a.DockerMemoryLimit, "4Gi"),
-				"ephemeral-storage": orDefault(a.DockerStorageLimit, "20Gi"),
-			},
+			"limits":   dockerLimits,
 		},
 		"securityContext": map[string]any{
 			// Root of the pod's user namespace: an unprivileged UID on the node.
@@ -299,6 +304,12 @@ func podTemplate(a PoolArgs) map[string]any {
 		res := map[string]any{}
 		if lim := quantities(r.CPULimit, r.MemoryLimit); len(lim) > 0 {
 			res["limits"] = lim
+			// Both containers share these limits. Kubernetes rejects container limits above
+			// the pod limit, including our default memory limits when the pod budget is smaller.
+			for resource := range lim {
+				delete(runnerLimits, resource)
+				delete(dockerLimits, resource)
+			}
 		}
 		if req := quantities(r.CPURequest, r.MemoryRequest); len(req) > 0 {
 			res["requests"] = req
@@ -376,14 +387,11 @@ func checkPool(a PoolArgs) error {
 	if maxR < 1 || maxR < minR {
 		return fmt.Errorf("pool %s: maxRunners must be at least 1 and at least minRunners", a.ID)
 	}
-	if (a.Token == nil) == (a.App == nil) {
-		return fmt.Errorf("pool %s: give exactly one of token (a PAT) or app (a GitHub App)", a.ID)
+	if (a.App == nil) == (a.Token == nil) {
+		return fmt.Errorf("pool %s: give exactly one of app (a GitHub App, recommended) or token (a PAT)", a.ID)
 	}
-	if a.RunnerGroup != nil && a.AdminToken == nil {
-		return fmt.Errorf("pool %s: a runner group needs adminToken", a.ID)
-	}
-	if a.ForkPrApproval != nil && a.AdminToken == nil {
-		return fmt.Errorf("pool %s: forkPrApproval needs adminToken", a.ID)
+	if a.RunnerGroup != nil && orgOf(a.ConfigURL) == "" {
+		return fmt.Errorf("pool %s: a runner group needs an organisation configUrl", a.ID)
 	}
 	if a.Hook != nil {
 		if _, err := hookFiles(*a.Hook); err != nil {

@@ -11,12 +11,10 @@ type PoolArgs struct {
 	ConfigURL    string `pulumi:"configUrl"`
 	ScaleSetName string `pulumi:"scaleSetName"`
 
-	Token      pulumi.StringInput `pulumi:"token,optional" provider:"secret"`
-	App        *GitHubApp         `pulumi:"app,optional"`
-	AdminToken pulumi.StringInput `pulumi:"adminToken,optional" provider:"secret"`
+	App   *GitHubApp         `pulumi:"app,optional"`
+	Token pulumi.StringInput `pulumi:"token,optional" provider:"secret"`
 
-	RunnerGroup    *RunnerGroup `pulumi:"runnerGroup,optional"`
-	ForkPrApproval *string      `pulumi:"forkPrApproval,optional"`
+	RunnerGroup *RunnerGroup `pulumi:"runnerGroup,optional"`
 
 	MinRunners *int    `pulumi:"minRunners,optional"`
 	MaxRunners *int    `pulumi:"maxRunners,optional"`
@@ -43,14 +41,14 @@ type PoolArgs struct {
 	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
 }
 
-// GitHubApp is ARC's credential when a pool uses a GitHub App instead of a PAT.
+// GitHubApp is the recommended credential for a pool.
 type GitHubApp struct {
 	AppID          string             `pulumi:"appId"`
 	InstallationID string             `pulumi:"installationId"`
 	PrivateKey     pulumi.StringInput `pulumi:"privateKey" provider:"secret"`
 }
 
-// RunnerGroup is the organisation's runner group the pool's runners join, created with adminToken.
+// RunnerGroup is the organisation's runner group the pool's runners join, created with the pool's credential.
 type RunnerGroup struct {
 	Name                     string  `pulumi:"name"`
 	Visibility               *string `pulumi:"visibility,optional"`
@@ -90,16 +88,16 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.ID, "A DNS-safe key for the pool; its runners live in namespace arc-runners-<id>.")
 	an.Describe(&a.ConfigURL, "https://github.com/<org>, or a repository URL for repository runners.")
 	an.Describe(&a.ScaleSetName, "The runs-on label: <machine>-<os>-<arch>, e.g. ryzen-linux-x64.")
-	an.Describe(&a.Token, "A fine-grained PAT for ARC: Self-hosted runners read and write, and repository Administration read. Give this or app.")
-	an.Describe(&a.App, "A GitHub App for ARC instead of a PAT.")
-	an.Describe(&a.AdminToken, "A PAT with organisation Administration read and write, used only to manage the runner group and the fork PR approval policy. It never enters the cluster.")
-	an.Describe(&a.RunnerGroup, "The organisation's runner group the runners join, created here.")
-	an.Describe(&a.ForkPrApproval, "Hold the organisation's fork PR approval policy at this value.")
+	an.Describe(&a.App, "Recommended GitHub App credential for ARC and the optional runner group. Set exactly one of app or token. For runner group management, the App needs organisation Self-hosted runners: write.")
+	an.Describe(&a.Token, "Alternative fine-grained PAT for ARC and the optional runner group. Set exactly one of app or token. For ARC, grant Self-hosted runners read and write, and repository Administration read.")
+	an.Describe(&a.RunnerGroup, "The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.")
 	an.Describe(&a.MinRunners, "Idle runners kept ready. Default 0.")
 	an.Describe(&a.MaxRunners, "Jobs at once. Default 2.")
 	an.Describe(&a.Image, "The runner image, pinned by digest. Default: the antimatter actions-runner image.")
-	an.Describe(&a.CPULimit, "The runner container's CPU limit. Default none: a job uses whatever CPU is free.")
-	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share.")
+	an.Describe(&a.CPULimit, "The runner container's CPU limit. Defaults to no container CPU limit. A pod-level CPU limit takes precedence.")
+	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.")
+	an.Describe(&a.DockerMemoryLimit, "The Docker sidecar's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.")
+	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.")
 	an.Describe(&a.TopologySpread, "Spread the pool's runners evenly across nodes, hard. For multi-node clusters.")
 	an.Describe(&a.Devices, "Device-plugin resources each runner gets, e.g. {\"devic.es/fuse\": \"1\"}.")
 	an.Describe(&a.SupplementalGroups, "Groups the runner pod's processes join.")

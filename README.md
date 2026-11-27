@@ -33,6 +33,17 @@ pulumi plugin install resource github-runners 0.0.0-dev -f bin/pulumi-resource-g
 Releases attach the plugin for darwin-arm64, linux-amd64 and linux-arm64 to a GitHub release, which
 Pulumi downloads by itself when a program pins that version.
 
+### Pool credentials
+
+Set exactly one of `app` or `token` on each pool. The recommended credential is a GitHub App
+with `appId`, `installationId` and a secret PEM `privateKey`. A secret fine-grained PAT
+(`token`) is also supported. The pool uses its credential for ARC and, if configured, to create
+its `runnerGroup`. Runner groups require an organisation `configUrl`. The App needs only the
+organisation **Self-hosted runners: write** permission for runner group management.
+
+Manage the organisation's fork pull request approval policy with the standalone
+`ForkPrApproval` resource.
+
 ## Developing
 
 - `cd provider && go vet ./... && go test -race ./...`
