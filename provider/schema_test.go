@@ -53,6 +53,25 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	if agent.Properties["claimUrl"].Type != "string" {
 		t.Error("GateAgent schema must expose a string claimUrl")
 	}
+	gitea := spec.Resources["github-runners:index:GiteaRunnerPool"]
+	required := slices.Clone(gitea.RequiredInputs)
+	slices.Sort(required)
+	if want := []string{"instanceUrl", "poolId", "registrationToken", "scope"}; !slices.Equal(required, want) {
+		t.Errorf("GiteaRunnerPool requires %v, want %v", required, want)
+	}
+	if !gitea.InputProperties["registrationToken"].Secret {
+		t.Error("GiteaRunnerPool schema must mark the registration token as secret")
+	}
+	for name, kind := range map[string]string{"scope": "string", "owner": "string", "repo": "string", "capacity": "integer", "containerOptions": "string", "topologySpread": "boolean", "automountServiceAccountToken": "boolean", "serviceAccountName": "string"} {
+		if gitea.InputProperties[name].Type != kind {
+			t.Errorf("GiteaRunnerPool input %s has type %q, want %s", name, gitea.InputProperties[name].Type, kind)
+		}
+	}
+	for _, name := range []string{"namespace", "statefulSetName", "registrationTokenEndpoint"} {
+		if gitea.Properties[name].Type != "string" {
+			t.Errorf("GiteaRunnerPool schema must expose a string %s", name)
+		}
+	}
 	// The load-aware capacity options are opt-in: a stack that does not set them keeps working.
 	pool := spec.Resources["github-runners:index:Pool"]
 	for resource, inputs := range map[string][]string{"Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
@@ -93,7 +112,7 @@ func TestNoComponentInputUsesAReservedName(t *testing.T) {
 	if _, ok := schema.Resources["github-runners:index:Pool"].InputProperties["poolId"]; !ok {
 		t.Fatal("Pool has no poolId input")
 	}
-	for _, component := range []string{"Controller", "Pool", "GateAgent"} {
+	for _, component := range []string{"Controller", "Pool", "GateAgent", "GiteaRunnerPool"} {
 		if r, ok := schema.Resources["github-runners:index:"+component]; !ok || !r.IsComponent {
 			t.Fatalf("schema lacks the %s component, so this test would not cover it", component)
 		}

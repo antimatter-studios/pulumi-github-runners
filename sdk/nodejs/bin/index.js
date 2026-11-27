@@ -25,7 +25,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.types = exports.Provider = exports.Pool = exports.GateAgent = exports.ForkPrApproval = exports.Controller = void 0;
+exports.types = exports.Provider = exports.Pool = exports.GiteaRunnerPool = exports.GateAgent = exports.ForkPrApproval = exports.Controller = void 0;
 const pulumi = __importStar(require("@pulumi/pulumi"));
 const utilities = __importStar(require("./utilities"));
 exports.Controller = null;
@@ -34,6 +34,8 @@ exports.ForkPrApproval = null;
 utilities.lazyLoad(exports, ["ForkPrApproval"], () => require("./forkPrApproval"));
 exports.GateAgent = null;
 utilities.lazyLoad(exports, ["GateAgent"], () => require("./gateAgent"));
+exports.GiteaRunnerPool = null;
+utilities.lazyLoad(exports, ["GiteaRunnerPool"], () => require("./giteaRunnerPool"));
 exports.Pool = null;
 utilities.lazyLoad(exports, ["Pool"], () => require("./pool"));
 exports.Provider = null;
@@ -51,6 +53,8 @@ const _module = {
                 return new exports.ForkPrApproval(name, undefined, { urn });
             case "github-runners:index:GateAgent":
                 return new exports.GateAgent(name, undefined, { urn });
+            case "github-runners:index:GiteaRunnerPool":
+                return new exports.GiteaRunnerPool(name, undefined, { urn });
             case "github-runners:index:Pool":
                 return new exports.Pool(name, undefined, { urn });
             default:

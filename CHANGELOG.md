@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `GiteaRunnerPool`: Gitea Actions runners for one repository, organisation, user or instance, as a
+  fixed-size StatefulSet with a persistent registration per runner, `docker://` labels (a podman
+  volume per runner) or `:host` labels (your own image), rootless podman or privileged dind, a hard
+  spread across hosts, no resource limits and no API token by default.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent
