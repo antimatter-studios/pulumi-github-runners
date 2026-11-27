@@ -24,3 +24,6 @@
   manages the runner group. Manage fork pull request approval with the standalone resource.
 - Runners wait for the podman socket before starting. Pod-level CPU and memory limits take
   precedence over the corresponding container limits.
+- `GateAgent` reports a cluster's runner pools to the public runner-gate and serves the in-cluster
+  claim endpoint using a dedicated ServiceAccount with list-only permissions. Like runner pods, the
+  agent requests CPU and memory but has no limit.

@@ -21,6 +21,7 @@
     "files": [
         "controller.ts",
         "forkPrApproval.ts",
+        "gateAgent.ts",
         "index.ts",
         "pool.ts",
         "provider.ts",

@@ -15,6 +15,11 @@ export type ForkPrApproval = import("./forkPrApproval").ForkPrApproval;
 export const ForkPrApproval: typeof import("./forkPrApproval").ForkPrApproval = null as any;
 utilities.lazyLoad(exports, ["ForkPrApproval"], () => require("./forkPrApproval"));
 
+export { GateAgentArgs } from "./gateAgent";
+export type GateAgent = import("./gateAgent").GateAgent;
+export const GateAgent: typeof import("./gateAgent").GateAgent = null as any;
+utilities.lazyLoad(exports, ["GateAgent"], () => require("./gateAgent"));
+
 export { PoolArgs } from "./pool";
 export type Pool = import("./pool").Pool;
 export const Pool: typeof import("./pool").Pool = null as any;
@@ -41,6 +46,8 @@ const _module = {
                 return new Controller(name, <any>undefined, { urn })
             case "github-runners:index:ForkPrApproval":
                 return new ForkPrApproval(name, <any>undefined, { urn })
+            case "github-runners:index:GateAgent":
+                return new GateAgent(name, <any>undefined, { urn })
             case "github-runners:index:Pool":
                 return new Pool(name, <any>undefined, { urn })
             default:
