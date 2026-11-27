@@ -37,6 +37,10 @@ export interface ControllerArgs {
      */
     listenerMetrics?: boolean;
     /**
+     * Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.
+     */
+    monitoring?: pulumi.Input<inputs.ControllerMonitoringArgs | undefined>;
+    /**
      * Where the controller runs. Default arc-systems.
      */
     namespace?: string;

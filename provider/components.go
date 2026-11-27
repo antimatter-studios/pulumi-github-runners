@@ -3,6 +3,7 @@ package githubrunners
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	github "github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi-go-provider/infer"
@@ -24,6 +25,9 @@ const arcCharts = "oci://ghcr.io/actions/actions-runner-controller-charts"
 // namespaces carrying it.
 const poolNamespaceLabel = "github-runners.antimatter.studios/pool"
 
+// poolNamespacePrefix and a poolId name a Pool's namespace.
+const poolNamespacePrefix = "arc-runners-"
+
 // DefaultDevicePluginImage is squat/generic-device-plugin, pinned by digest, which offers host
 // devices as schedulable resources named devic.es/<name>.
 const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc84958301f054bf72d9753a7a2c9af3d6642a9844b34d1171b3f2cdb4a15f6"
@@ -42,6 +46,8 @@ type ControllerArgs struct {
 
 	PriorityClassName *string             `pulumi:"priorityClassName,optional"`
 	Resources         *ContainerResources `pulumi:"resources,optional"`
+
+	Monitoring *ControllerMonitoring `pulumi:"monitoring,optional"`
 }
 
 // ContainerResources are one container's requests and limits.
@@ -77,6 +83,7 @@ func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Version, "The ARC chart version. Default "+DefaultARCVersion+".")
 	an.Describe(&a.ListenerMetrics, "Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.")
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
+	an.Describe(&a.Monitoring, "Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.")
 	an.Describe(&a.PrePull, "Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.")
 	an.Describe(&a.PriorityClassName, "The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.")
 	an.Describe(&a.Resources, "The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.")
@@ -115,8 +122,17 @@ func controllerValues(a ControllerArgs) map[string]any {
 		v["priorityClassName"] = class
 	}
 	if a.ListenerMetrics == nil || *a.ListenerMetrics {
-		// The listener metrics feed the runner-gate; the controller's own stay off.
-		v["metrics"] = map[string]any{"controllerManagerAddr": "0", "listenerAddr": ":8080", "listenerEndpoint": "/metrics"}
+		// The listener metrics feed the runner-gate. The controller's own are for monitoring, which
+		// reads whether each listener is running from them, and stay off without it.
+		controllerAddr := "0"
+		addr := ":" + strconv.Itoa(metricsPort)
+		if a.Monitoring != nil {
+			controllerAddr = addr
+		}
+		v["metrics"] = map[string]any{"controllerManagerAddr": controllerAddr, "listenerAddr": addr, "listenerEndpoint": metricsPath}
+	}
+	if m := a.Monitoring; m != nil && m.ScrapeAnnotations != nil && *m.ScrapeAnnotations {
+		v["podAnnotations"] = scrapeAnnotations()
 	}
 	return v
 }
@@ -139,6 +155,9 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 	}
 	if a.Resources != nil && len(a.Resources.values()) == 0 {
 		return nil, errors.New("controller: resources sets no request or limit; leave it out to keep the defaults")
+	}
+	if err := checkMonitoring(a); err != nil {
+		return nil, err
 	}
 	c := &Controller{}
 	if err := ctx.RegisterComponentResource("github-runners:index:Controller", name, c, opts...); err != nil {
@@ -219,6 +238,11 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 			return nil, err
 		}
 	}
+	if a.Monitoring != nil {
+		if err := newMonitoring(ctx, name, namespace, *a.Monitoring, child, inNS); err != nil {
+			return nil, err
+		}
+	}
 	c.Namespace = release.Namespace.Elem()
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{"namespace": c.Namespace}); err != nil {
 		return nil, err
@@ -250,7 +274,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		return nil, err
 	}
 	child := pulumi.Parent(pool)
-	namespace := "arc-runners-" + a.ID
+	namespace := poolNamespacePrefix + a.ID
 	ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:   pulumi.String(namespace),

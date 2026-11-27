@@ -41,6 +41,7 @@ export class Controller extends pulumi.ComponentResource {
             resourceInputs["devicePluginImage"] = args?.devicePluginImage;
             resourceInputs["devices"] = args?.devices;
             resourceInputs["listenerMetrics"] = args?.listenerMetrics;
+            resourceInputs["monitoring"] = args?.monitoring;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["prePull"] = args?.prePull;
             resourceInputs["priorityClassName"] = args?.priorityClassName;
@@ -71,6 +72,10 @@ export interface ControllerArgs {
      * Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.
      */
     listenerMetrics?: boolean;
+    /**
+     * Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.
+     */
+    monitoring?: pulumi.Input<inputs.ControllerMonitoringArgs | undefined>;
     /**
      * Where the controller runs. Default arc-systems.
      */

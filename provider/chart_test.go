@@ -209,6 +209,31 @@ func TestTheChartHasNoListenerTemplateByDefault(t *testing.T) {
 	}
 }
 
+// The monitoring values only matter as the pinned charts render them: the controller's metrics port,
+// which the PodMonitor scrapes by name, its pod labels, and the listener template the scale set
+// hands to the controller.
+func TestTheChartsRenderMonitoring(t *testing.T) {
+	needHelm(t)
+	pod := renderController(t, ControllerArgs{Monitoring: &ControllerMonitoring{ScrapeAnnotations: bp(true)}})
+	if got := get(t, pod, "metadata", "labels", "app.kubernetes.io/part-of"); got != controllerPodLabels["app.kubernetes.io/part-of"] {
+		t.Errorf("controller pod part-of %v", got)
+	}
+	if got := get(t, pod, "metadata", "annotations", "prometheus.io/port"); got != "8080" {
+		t.Errorf("controller scrape port %v", got)
+	}
+	manager := get(t, pod, "spec", "containers", 0)
+	if got := get(t, manager, "ports"); !jsonEqual(got, []any{map[string]any{"containerPort": 8080, "name": "metrics", "protocol": "TCP"}}) {
+		t.Errorf("controller ports %v", got)
+	}
+
+	a := basePool()
+	a.ListenerScrapeAnnotations = bp(true)
+	set := renderScaleSet(t, a, "")
+	if got := get(t, set, "spec", "listenerTemplate"); !jsonEqual(got, scaleSetValues(a, "arc-github", "")["listenerTemplate"]) {
+		t.Errorf("rendered listener template %v", got)
+	}
+}
+
 func jsonEqual(a, b any) bool {
 	ra, _ := json.Marshal(a)
 	rb, _ := json.Marshal(b)

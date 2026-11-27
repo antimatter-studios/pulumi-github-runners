@@ -59,6 +59,7 @@ class Controller extends pulumi.ComponentResource {
             resourceInputs["devicePluginImage"] = args?.devicePluginImage;
             resourceInputs["devices"] = args?.devices;
             resourceInputs["listenerMetrics"] = args?.listenerMetrics;
+            resourceInputs["monitoring"] = args?.monitoring;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["prePull"] = args?.prePull;
             resourceInputs["priorityClassName"] = args?.priorityClassName;

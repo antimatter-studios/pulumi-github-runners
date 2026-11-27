@@ -66,6 +66,22 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	if got := spec.Resources["github-runners:index:Controller"].InputProperties["createNamespace"].Type; got != "boolean" {
 		t.Errorf("Controller createNamespace schema type = %q", got)
 	}
+	// Monitoring is opt-in too.
+	controller := spec.Resources["github-runners:index:Controller"]
+	for name, r := range map[string]schema.ResourceSpec{"monitoring": controller, "listenerScrapeAnnotations": pool} {
+		if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
+			t.Errorf("schema must offer %s as an optional input", name)
+		}
+	}
+	monitoring := spec.Types[strings.TrimPrefix(controller.InputProperties["monitoring"].Ref, "#/types/")]
+	if len(monitoring.Required) != 0 {
+		t.Errorf("every monitoring option must be optional: %v", monitoring.Required)
+	}
+	for _, name := range []string{"podMonitor", "alerts", "dashboard", "networkPolicy", "scrapeAnnotations"} {
+		if _, ok := monitoring.Properties[name]; !ok {
+			t.Errorf("Controller monitoring lacks %s", name)
+		}
+	}
 	slots := spec.Types[strings.TrimPrefix(pool.InputProperties["slots"].Ref, "#/types/")]
 	if len(slots.Required) != 0 || slots.Properties["enabled"].Type != "boolean" || slots.Properties["resourceName"].Type != "string" {
 		t.Errorf("Pool slots type = %+v", slots)

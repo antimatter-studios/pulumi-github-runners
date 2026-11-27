@@ -420,7 +420,8 @@ func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[strin
 // listenerTemplate is what the pool's listener pod adds to ARC's own, or nil to leave it alone.
 func listenerTemplate(a PoolArgs) map[string]any {
 	class := orDefault(a.ListenerPriorityClassName, "")
-	if class == "" && a.ListenerResources == nil {
+	scrape := a.ListenerScrapeAnnotations != nil && *a.ListenerScrapeAnnotations
+	if class == "" && a.ListenerResources == nil && !scrape {
 		return nil
 	}
 	// ARC merges this container into its own by name. The CRD requires the list, even with nothing
@@ -433,12 +434,16 @@ func listenerTemplate(a PoolArgs) map[string]any {
 		"containers": []any{listener},
 		// ARC copies this from the template even when unset, which would drop the listener's own 60 s
 		// to Kubernetes' 30 s.
-		"terminationGracePeriodSeconds": 60,
+		"terminationGracePeriodSeconds": listenerGracePeriodSeconds,
 	}
 	if class != "" {
 		spec["priorityClassName"] = class
 	}
-	return map[string]any{"spec": spec}
+	t := map[string]any{"spec": spec}
+	if scrape {
+		t["metadata"] = map[string]any{"annotations": scrapeAnnotations()}
+	}
+	return t
 }
 
 func intOr(v *int, d int) int {

@@ -118,6 +118,7 @@ type PoolArgs struct {
 	ListenerPriorityClassName *string             `pulumi:"listenerPriorityClassName,optional"`
 	ListenerResources         *ContainerResources `pulumi:"listenerResources,optional"`
 	GateClaim                 *PoolGateClaim      `pulumi:"gateClaim,optional"`
+	ListenerScrapeAnnotations *bool               `pulumi:"listenerScrapeAnnotations,optional"`
 }
 
 // PoolGateClaim has every job claim its runner-gate reservation before its first step. Exactly one
@@ -202,6 +203,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Env, "Every job's default environment, which a job can override, e.g. {GOMAXPROCS: \"2\", CARGO_BUILD_JOBS: \"2\", FLTH_RESOURCE_PROFILE: \"low\"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.")
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
+	an.Describe(&a.ListenerScrapeAnnotations, "Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.")
 	an.Describe(&a.Slots, "Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.")
 	an.Describe(&a.ListenerPriorityClassName, "The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.")
 	an.Describe(&a.ListenerResources, "The listener container's requests and limits. Default: none.")
