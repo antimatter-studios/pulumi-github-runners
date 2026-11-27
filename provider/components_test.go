@@ -221,6 +221,59 @@ func TestController(t *testing.T) {
 	m.find(t, "kubernetes:apps/v1:DaemonSet", "-fuse-device-plugin")
 }
 
+// A namespace something else owns is used as it is: pulumi-kubernetes refuses to create one that exists.
+func TestControllerInAnExistingNamespace(t *testing.T) {
+	m := runController(t, ControllerArgs{
+		Namespace:       sp("arc-systems"),
+		CreateNamespace: bp(false),
+		Devices:         []DeviceOffer{{Name: "fuse", Paths: []string{"/dev/fuse"}}, {Name: "kvm", Paths: []string{"/dev/kvm"}}},
+		PrePull:         &PrePull{},
+	})
+	checkControllerNamespace(t, m, "arc-systems", 0)
+
+	m = runController(t, ControllerArgs{Namespace: sp("arc"), CreateNamespace: bp(false), PrePull: &PrePull{},
+		Devices: []DeviceOffer{{Name: "fuse", Paths: []string{"/dev/fuse"}}}})
+	checkControllerNamespace(t, m, "arc", 0)
+}
+
+func TestControllerCreatesItsNamespaceUnlessToldNotTo(t *testing.T) {
+	for _, create := range []*bool{nil, bp(true)} {
+		m := runController(t, ControllerArgs{Namespace: sp("arc"), CreateNamespace: create, PrePull: &PrePull{},
+			Devices: []DeviceOffer{{Name: "fuse", Paths: []string{"/dev/fuse"}}}})
+		checkControllerNamespace(t, m, "arc", 1)
+		ns := m.find(t, "kubernetes:core/v1:Namespace", "-ns")
+		if got := ns.inputs["metadata"].ObjectValue()["name"].StringValue(); got != "arc" {
+			t.Fatalf("namespace %q", got)
+		}
+	}
+}
+
+// checkControllerNamespace: how many Namespaces were created, and that the release and every
+// DaemonSet target the namespace.
+func checkControllerNamespace(t *testing.T, m *mocks, namespace string, created int) {
+	t.Helper()
+	if n := m.count("kubernetes:core/v1:Namespace"); n != created {
+		t.Fatalf("%d Namespaces, want %d", n, created)
+	}
+	release := m.find(t, "kubernetes:helm.sh/v3:Release", "-controller")
+	if release.inputs["namespace"].StringValue() != namespace || release.inputs["createNamespace"].BoolValue() {
+		t.Fatalf("release %v", release.inputs)
+	}
+	daemonSets := 0
+	for _, r := range m.all {
+		if r.typ != "kubernetes:apps/v1:DaemonSet" {
+			continue
+		}
+		daemonSets++
+		if got := r.inputs["metadata"].ObjectValue()["namespace"].StringValue(); got != namespace {
+			t.Errorf("DaemonSet %s in namespace %q, want %q", r.name, got, namespace)
+		}
+	}
+	if daemonSets < 2 {
+		t.Fatalf("%d DaemonSets, want the device plugins and the pre-pull", daemonSets)
+	}
+}
+
 // obj is an object property, through any secret wrapping.
 func obj(v resource.PropertyValue) resource.PropertyMap {
 	for v.IsSecret() {

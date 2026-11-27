@@ -53,15 +53,18 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	if agent.Properties["claimUrl"].Type != "string" {
 		t.Error("GateAgent schema must expose a string claimUrl")
 	}
-	// The load-aware capacity options are opt-in: a stack that does not set them keeps working.
+	// Newer options are optional: a stack that does not set them keeps working.
 	pool := spec.Resources["github-runners:index:Pool"]
-	for resource, inputs := range map[string][]string{"Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
+	for resource, inputs := range map[string][]string{"Controller": {"createNamespace"}, "Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
 		r := spec.Resources["github-runners:index:"+resource]
 		for _, name := range inputs {
 			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
 				t.Errorf("%s schema must offer %s as an optional input", resource, name)
 			}
 		}
+	}
+	if got := spec.Resources["github-runners:index:Controller"].InputProperties["createNamespace"].Type; got != "boolean" {
+		t.Errorf("Controller createNamespace schema type = %q", got)
 	}
 	slots := spec.Types[strings.TrimPrefix(pool.InputProperties["slots"].Ref, "#/types/")]
 	if len(slots.Required) != 0 || slots.Properties["enabled"].Type != "boolean" || slots.Properties["resourceName"].Type != "string" {
