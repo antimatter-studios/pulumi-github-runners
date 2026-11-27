@@ -70,6 +70,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["cpuRequest"] = args?.cpuRequest;
             resourceInputs["devices"] = args?.devices;
             resourceInputs["dockerMemoryLimit"] = args?.dockerMemoryLimit;
+            resourceInputs["dockerMemoryRequest"] = args?.dockerMemoryRequest;
             resourceInputs["dockerStorageLimit"] = args?.dockerStorageLimit;
             resourceInputs["env"] = args?.env;
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;

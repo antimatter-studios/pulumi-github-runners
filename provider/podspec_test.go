@@ -241,6 +241,24 @@ func TestSizingDefaultsAndNoCPULimitUnlessAsked(t *testing.T) {
 	}
 }
 
+func TestDockerMemoryRequest(t *testing.T) {
+	if r := container(t, podTemplate(basePool()), "docker")["resources"].(map[string]any)["requests"].(map[string]any); r["memory"] != "128Mi" {
+		t.Fatalf("sidecar requests %v, want 128Mi by default", r)
+	}
+	a := basePool()
+	a.MemoryRequest, a.DockerMemoryRequest = sp("1Gi"), sp("1Gi")
+	tpl := podTemplate(a)
+	if r := container(t, tpl, "docker")["resources"].(map[string]any)["requests"].(map[string]any); r["memory"] != "1Gi" {
+		t.Fatalf("sidecar requests %v: dockerMemoryRequest not applied", r)
+	}
+	if r := container(t, tpl, "runner")["resources"].(map[string]any)["requests"].(map[string]any); r["memory"] != "1Gi" {
+		t.Fatalf("runner requests %v: memoryRequest not applied", r)
+	}
+	if l := container(t, tpl, "docker")["resources"].(map[string]any)["limits"].(map[string]any); l["memory"] != nil {
+		t.Fatalf("sidecar limits %v: a request must not bring a memory limit", l)
+	}
+}
+
 func TestPodResourcesAreOneSharedBudget(t *testing.T) {
 	if has(t, podTemplate(basePool()), "spec", "resources") {
 		t.Fatal("no pod-level resources unless asked")

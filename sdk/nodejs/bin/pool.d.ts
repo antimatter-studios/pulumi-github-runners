@@ -47,6 +47,10 @@ export interface PoolArgs {
      * The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
     dockerMemoryLimit?: string;
+    /**
+     * The Docker sidecar's memory request. Default 128Mi. Docker builds and job services run here, so with LimitedSwap this request is also what sizes the sidecar's swap.
+     */
+    dockerMemoryRequest?: string;
     dockerStorageLimit?: string;
     /**
      * Every job's default environment, which a job can override, e.g. {GOMAXPROCS: "2", CARGO_BUILD_JOBS: "2", FLTH_RESOURCE_PROFILE: "low"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.
