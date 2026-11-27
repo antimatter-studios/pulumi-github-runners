@@ -463,3 +463,16 @@ func gnuSedPath(t *testing.T, dir string) string {
 	}
 	return bin
 }
+
+// A pool's job environment reaches every job, and cannot override what the runner itself depends on.
+func TestPoolEnvIsEveryJobsDefault(t *testing.T) {
+	a := basePool()
+	a.Env = map[string]string{"GOMAXPROCS": "2", "FLTH_RESOURCE_PROFILE": "low", "DOCKER_HOST": "tcp://elsewhere"}
+	e := env(t, container(t, podTemplate(a), "runner"))
+	if e["GOMAXPROCS"] != "2" || e["FLTH_RESOURCE_PROFILE"] != "low" {
+		t.Fatalf("env %v", e)
+	}
+	if e["DOCKER_HOST"] != "unix:///run/docker/docker.sock" {
+		t.Fatalf("a pool overrode DOCKER_HOST: %v", e["DOCKER_HOST"])
+	}
+}

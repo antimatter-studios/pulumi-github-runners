@@ -48,6 +48,12 @@ export interface PoolArgs {
      */
     dockerMemoryLimit?: string;
     dockerStorageLimit?: string;
+    /**
+     * Every job's default environment, which a job can override, e.g. {GOMAXPROCS: "2", CARGO_BUILD_JOBS: "2", FLTH_RESOURCE_PROFILE: "low"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.
+     */
+    env?: pulumi.Input<{
+        [key: string]: string;
+    } | undefined>;
     ephemeralStorageLimit?: string;
     ephemeralStorageRequest?: string;
     /**

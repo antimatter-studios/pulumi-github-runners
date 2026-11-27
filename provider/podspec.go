@@ -203,11 +203,21 @@ func podTemplate(a PoolArgs) map[string]any {
 		// podman serves the classic build API; BuildKit needs cgroups.
 		"DOCKER_BUILDKIT": "0",
 	}
+	// The pool's job defaults first, then the hook's own variables, then the runner's, which a pool
+	// must not override (the hook path, Docker's socket).
+	merged := map[string]string{}
+	for k, v := range a.Env {
+		merged[k] = v
+	}
 	if a.Hook != nil {
 		for k, v := range a.Hook.Env {
-			env[k] = v
+			merged[k] = v
 		}
 	}
+	for k, v := range env {
+		merged[k] = v
+	}
+	env = merged
 
 	runner := map[string]any{
 		"name":  "runner",
