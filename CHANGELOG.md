@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
+  `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
+  published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent
+  publishes them, so enable the agent first.
+- `GateAgent.manageSlots`: grants the agent `patch` on `nodes/status`, and nothing else, to publish
+  each node's slot count. Off by default.
 - `GateAgent` admits only pool namespaces (labelled `github-runners.antimatter.studios/pool`, which
   `Pool` now sets) to its port 8080, on by default; `networkPolicy.allow` adds sources and
   `networkPolicy.enabled: false` opts out. A pool's `networkPolicy` now lets its runners reach the

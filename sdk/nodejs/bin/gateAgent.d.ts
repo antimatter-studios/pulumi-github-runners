@@ -51,6 +51,10 @@ export interface GateAgentArgs {
      */
     listenerNamespace?: string;
     /**
+     * Let the agent patch nodes/status, so it can publish each node's runner slots (the extended resource runners.antimatter.studios/slot) for pools with slots enabled. Default false; nothing broader than nodes/status patch is granted.
+     */
+    manageSlots?: boolean;
+    /**
      * Existing namespace in which to deploy the agent. Defaults to arc-systems.
      */
     namespace?: string;

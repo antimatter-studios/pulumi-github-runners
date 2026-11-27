@@ -107,6 +107,10 @@ export interface PoolArgs {
      */
     scaleSetName: string;
     /**
+     * Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.
+     */
+    slots?: pulumi.Input<inputs.PoolSlotsArgs | undefined>;
+    /**
      * Groups the runner pod's processes join.
      */
     supplementalGroups?: pulumi.Input<number[] | undefined>;

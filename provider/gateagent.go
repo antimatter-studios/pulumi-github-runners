@@ -60,7 +60,7 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 		}
 		deps = append(deps, binding)
 	}
-	roleArgs, bindingArgs := gateAgentClusterRole(namespace)
+	roleArgs, bindingArgs := gateAgentClusterRole(a, namespace)
 	role, err := rbacv1.NewClusterRole(ctx, name+"-node-role", roleArgs, child)
 	if err != nil {
 		return nil, err

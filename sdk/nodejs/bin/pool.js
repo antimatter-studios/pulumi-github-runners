@@ -88,6 +88,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["priorityClassName"] = args?.priorityClassName;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
+            resourceInputs["slots"] = args?.slots;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
             resourceInputs["token"] = args?.token ? pulumi.secret(args.token) : undefined;
             resourceInputs["topologySpread"] = args?.topologySpread;

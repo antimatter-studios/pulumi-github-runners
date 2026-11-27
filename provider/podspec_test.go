@@ -334,6 +334,36 @@ func TestDevicesComeFromDevicePluginsNotHostPaths(t *testing.T) {
 	}
 }
 
+func TestSlotsAreOptionalAndTakenByTheRunnerOnly(t *testing.T) {
+	for _, slots := range []*PoolSlots{nil, {}, {Enabled: bp(false), ResourceName: sp("example.com/slot")}} {
+		a := basePool()
+		a.Slots = slots
+		raw, _ := json.Marshal(podTemplate(a))
+		if strings.Contains(string(raw), "slot") {
+			t.Fatalf("slots %+v: a pool without slots must schedule as before, got %s", slots, raw)
+		}
+	}
+	for want, slots := range map[string]*PoolSlots{
+		defaultSlotResource: {Enabled: bp(true)},
+		"example.com/slot":  {Enabled: bp(true), ResourceName: sp("example.com/slot")},
+	} {
+		a := basePool()
+		a.Slots = slots
+		tpl := podTemplate(a)
+		resources := container(t, tpl, "runner")["resources"].(map[string]any)
+		// Requests and limits both: the API server refuses an extended resource whose request
+		// differs from its limit.
+		if resources["requests"].(map[string]any)[want] != "1" || resources["limits"].(map[string]any)[want] != "1" {
+			t.Fatalf("runner resources %v, want one %s", resources, want)
+		}
+		// One per pod: the sidecar taking one too would halve the node's runners.
+		raw, _ := json.Marshal(container(t, tpl, "docker"))
+		if strings.Contains(string(raw), want) {
+			t.Fatalf("the docker sidecar takes a slot: %s", raw)
+		}
+	}
+}
+
 func TestTheHookIsMountedAndCalledBeforeEveryJob(t *testing.T) {
 	tpl := podTemplate(basePool())
 	if env(t, container(t, tpl, "runner"))["ACTIONS_RUNNER_HOOK_JOB_STARTED"] != "/etc/arc-hooks/job-started.sh" {
@@ -401,6 +431,16 @@ func TestCheckPool(t *testing.T) {
 			a.ConfigURL, a.RunnerGroup = "https://github.com/acme/repo", &RunnerGroup{Name: "ryzen"}
 		},
 		"reserved hook file": func(a *PoolArgs) { a.Hook = &PoolHook{Files: map[string]string{"custom.sh": ""}} },
+		"slot without a domain": func(a *PoolArgs) {
+			a.Slots = &PoolSlots{Enabled: bp(true), ResourceName: sp("slot")}
+		},
+		"slot in kubernetes.io": func(a *PoolArgs) {
+			a.Slots = &PoolSlots{Enabled: bp(true), ResourceName: sp("kubernetes.io/slot")}
+		},
+		"slot that is also a device": func(a *PoolArgs) {
+			a.Slots = &PoolSlots{Enabled: bp(true), ResourceName: sp("devic.es/kvm")}
+			a.Devices = map[string]string{"devic.es/kvm": "1"}
+		},
 	}
 	for name, mutate := range cases {
 		a := ok
@@ -408,6 +448,11 @@ func TestCheckPool(t *testing.T) {
 		if err := checkPool(a); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+	withSlots := ok
+	withSlots.Slots = &PoolSlots{Enabled: bp(true)}
+	if err := checkPool(withSlots); err != nil {
+		t.Errorf("default slot resource refused: %v", err)
 	}
 	for _, label := range []string{"ryzen-linux-x64", "vps-linux-x64", "macbook-macos-arm64", "ryzen-windows-arm64", "antimatter-vps-linux-x64"} {
 		a := ok

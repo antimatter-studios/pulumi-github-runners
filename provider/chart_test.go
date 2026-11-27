@@ -28,6 +28,7 @@ func TestTheChartKeepsThePodAsWritten(t *testing.T) {
 	a.CPULimit = sp("8")
 	a.SupplementalGroups = []int{993}
 	a.TopologySpread = bp(true)
+	a.Slots = &PoolSlots{Enabled: bp(true)}
 	dir := t.TempDir()
 	values := filepath.Join(dir, "values.json")
 	raw, err := json.Marshal(scaleSetValues(a, "arc-github", "ryzen"))

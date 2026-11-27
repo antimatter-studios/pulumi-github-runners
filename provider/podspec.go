@@ -219,6 +219,18 @@ func podTemplate(a PoolArgs) map[string]any {
 	}
 	env = merged
 
+	runnerRequests := map[string]any{
+		"cpu":               orDefault(a.CPURequest, "100m"),
+		"memory":            orDefault(a.MemoryRequest, "256Mi"),
+		"ephemeral-storage": orDefault(a.EphemeralStorageRequest, "2Gi"),
+	}
+	// One slot, on the runner container only, so a pod counts once. An extended resource cannot be
+	// overcommitted, so its request and limit must be the same.
+	if slot := slotResource(a); slot != "" {
+		runnerRequests[slot] = "1"
+		runnerLimits[slot] = "1"
+	}
+
 	runner := map[string]any{
 		"name":  "runner",
 		"image": orDefault(a.Image, DefaultRunnerImage),
@@ -231,12 +243,8 @@ func podTemplate(a PoolArgs) map[string]any {
 		// Memory too: reserve little, cap at the limit. When a node runs out, the kernel and kubelet
 		// kill whatever is furthest over its request, so a CI job dies before the cluster's services.
 		"resources": map[string]any{
-			"requests": map[string]any{
-				"cpu":               orDefault(a.CPURequest, "100m"),
-				"memory":            orDefault(a.MemoryRequest, "256Mi"),
-				"ephemeral-storage": orDefault(a.EphemeralStorageRequest, "2Gi"),
-			},
-			"limits": runnerLimits,
+			"requests": runnerRequests,
+			"limits":   runnerLimits,
 		},
 		"securityContext": map[string]any{
 			"allowPrivilegeEscalation": true, // sudo; contained by hostUsers: false
@@ -353,6 +361,21 @@ func podTemplate(a PoolArgs) map[string]any {
 	return map[string]any{"spec": spec}
 }
 
+// defaultSlotResource is the extended resource a node's runner slots are published as.
+const defaultSlotResource = "runners.antimatter.studios/slot"
+
+// slotResourcePattern is an extended resource name: a domain prefix outside kubernetes.io, a slash,
+// and a name, as the API server accepts it.
+var slotResourcePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+/[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$`)
+
+// slotResource is the resource each runner pod takes one of, or "" when the pool does not use slots.
+func slotResource(a PoolArgs) string {
+	if a.Slots == nil || a.Slots.Enabled == nil || !*a.Slots.Enabled {
+		return ""
+	}
+	return orDefault(a.Slots.ResourceName, defaultSlotResource)
+}
+
 func quantities(cpu, memory *string) map[string]any {
 	out := map[string]any{}
 	if cpu != nil && *cpu != "" {
@@ -421,6 +444,16 @@ func checkPool(a PoolArgs) error {
 	if a.Hook != nil {
 		if _, err := hookFiles(*a.Hook); err != nil {
 			return fmt.Errorf("pool %s: %w", a.ID, err)
+		}
+	}
+	if slot := slotResource(a); slot != "" {
+		// kubernetes.io names are the cluster's own resources (cpu, memory); a slot there would
+		// collide with them, or be rejected.
+		if !slotResourcePattern.MatchString(slot) || strings.Contains(strings.SplitN(slot, "/", 2)[0], "kubernetes.io") {
+			return fmt.Errorf("pool %s: slots.resourceName %q must be an extended resource name such as %s", a.ID, slot, defaultSlotResource)
+		}
+		if _, ok := a.Devices[slot]; ok {
+			return fmt.Errorf("pool %s: slots.resourceName %q is also one of the pool's devices", a.ID, slot)
 		}
 	}
 	return nil
