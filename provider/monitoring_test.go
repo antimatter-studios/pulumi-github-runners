@@ -365,3 +365,39 @@ func TestInvalidMonitoringCreatesNothing(t *testing.T) {
 		})
 	}
 }
+
+// The listener's priority, resources and scrape annotations share one listener template.
+func TestListenerTemplateCarriesPriorityResourcesAndScrapeAnnotations(t *testing.T) {
+	a := basePool()
+	a.ListenerPriorityClassName = sp("infra-critical")
+	a.ListenerResources = &ContainerResources{MemoryRequest: sp("64Mi")}
+	a.ListenerScrapeAnnotations = bp(true)
+	v := scaleSetValues(a, "arc-github", "")
+	if got := get(t, v, "listenerTemplate", "metadata", "annotations", "prometheus.io/port"); got != "8080" {
+		t.Errorf("scrape port %v", got)
+	}
+	if got := get(t, v, "listenerTemplate", "spec", "priorityClassName"); got != "infra-critical" {
+		t.Errorf("priorityClassName %v", got)
+	}
+	if got := get(t, v, "listenerTemplate", "spec", "terminationGracePeriodSeconds"); got != float64(60) {
+		t.Errorf("grace period %v", got)
+	}
+	want := []any{map[string]any{"name": "listener", "resources": map[string]any{"requests": map[string]any{"memory": "64Mi"}}}}
+	if got := get(t, v, "listenerTemplate", "spec", "containers"); !jsonEqual(got, want) {
+		t.Errorf("containers %v", got)
+	}
+}
+
+// Monitoring works in a namespace the Controller did not create.
+func TestMonitoringInAnExistingNamespace(t *testing.T) {
+	m := runController(t, ControllerArgs{Namespace: sp("arc-systems"), CreateNamespace: bp(false), Monitoring: &ControllerMonitoring{
+		NetworkPolicy: &MonitoringNetworkPolicy{Allow: []MetricsSource{{PodLabels: map[string]string{"app": "scraper"}}}},
+	}})
+	if n := m.count("kubernetes:core/v1:Namespace"); n != 0 {
+		t.Fatalf("%d Namespaces, want none", n)
+	}
+	policy := m.find(t, testNetworkPolicyType, "-metrics-ingress")
+	if got := obj(policy.inputs["metadata"])["namespace"].StringValue(); got != "arc-systems" {
+		t.Errorf("metrics policy in namespace %q", got)
+	}
+}

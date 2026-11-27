@@ -58,8 +58,12 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["env"] = args?.env;
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
+            resourceInputs["gateClaim"] = args?.gateClaim;
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
+            resourceInputs["listenerPriorityClassName"] = args?.listenerPriorityClassName;
+            resourceInputs["listenerResources"] = args?.listenerResources;
+            resourceInputs["listenerScrapeAnnotations"] = args?.listenerScrapeAnnotations;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["maxRunnersAgent"] = args?.maxRunnersAgent;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
@@ -124,6 +128,10 @@ export interface PoolArgs {
     ephemeralStorageLimit?: string;
     ephemeralStorageRequest?: string;
     /**
+     * Claim each job's runner-gate reservation through the cluster's gate agent, after the fork check and before hook.script. A gate that cannot be reached lets the job run; an expired reservation fails it. Off unless set.
+     */
+    gateClaim?: pulumi.Input<inputs.PoolGateClaimArgs | undefined>;
+    /**
      * What runs before every job's first step.
      */
     hook?: pulumi.Input<inputs.PoolHookArgs | undefined>;
@@ -131,6 +139,18 @@ export interface PoolArgs {
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
     image?: string;
+    /**
+     * The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.
+     */
+    listenerPriorityClassName?: string;
+    /**
+     * The listener container's requests and limits. Default: none.
+     */
+    listenerResources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
+    /**
+     * Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.
+     */
+    listenerScrapeAnnotations?: boolean;
     /**
      * Jobs at once. Default 2. With maxRunnersAgent enabled, the ceiling the agent may raise the pool to.
      */

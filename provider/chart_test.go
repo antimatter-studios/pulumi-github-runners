@@ -250,6 +250,25 @@ func TestTheChartPublishesTheCeilingOnTheScaleSet(t *testing.T) {
 	}
 }
 
+// The listener's priority, resources and scrape annotations all reach the rendered listener template.
+func TestTheChartRendersTheWholeListenerTemplate(t *testing.T) {
+	needHelm(t)
+	a := basePool()
+	a.ListenerPriorityClassName = sp("infra-critical")
+	a.ListenerResources = &ContainerResources{MemoryRequest: sp("64Mi")}
+	a.ListenerScrapeAnnotations = bp(true)
+	pod := get(t, renderScaleSet(t, a, ""), "spec", "listenerTemplate").(map[string]any)
+	if got := get(t, pod, "spec", "priorityClassName"); got != "infra-critical" {
+		t.Errorf("listener priorityClassName %v", got)
+	}
+	if got := get(t, container(t, pod, "listener"), "resources", "requests", "memory"); got != "64Mi" {
+		t.Errorf("listener memory request %v", got)
+	}
+	if got := get(t, pod, "metadata", "annotations", "prometheus.io/scrape"); got != "true" {
+		t.Errorf("listener scrape annotation %v", got)
+	}
+}
+
 func jsonEqual(a, b any) bool {
 	ra, _ := json.Marshal(a)
 	rb, _ := json.Marshal(b)
