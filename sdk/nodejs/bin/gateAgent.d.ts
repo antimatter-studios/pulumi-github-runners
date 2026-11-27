@@ -55,6 +55,10 @@ export interface GateAgentArgs {
      */
     namespace?: string;
     /**
+     * Who may reach the agent's port 8080. By default only pods in namespaces labelled github-runners.antimatter.studios/pool, which every Pool's namespace is.
+     */
+    networkPolicy?: pulumi.Input<inputs.GateAgentNetworkPolicyArgs | undefined>;
+    /**
      * Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.
      */
     runnerNamespaces: pulumi.Input<string[]>;

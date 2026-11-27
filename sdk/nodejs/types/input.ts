@@ -20,6 +20,28 @@ export interface GateAgentImagePullArgs {
     username: pulumi.Input<string>;
 }
 
+export interface GateAgentNetworkPolicyArgs {
+    /**
+     * Extra sources allowed to reach port 8080, e.g. a metrics scraper: {namespaceLabels: {"kubernetes.io/metadata.name": "monitoring"}}. Runner namespaces not created by a Pool need an entry too.
+     */
+    allow?: pulumi.Input<pulumi.Input<inputs.GateAgentSourceArgs>[] | undefined>;
+    /**
+     * Create the agent's ingress NetworkPolicy. Default true; false lets any pod reach the agent.
+     */
+    enabled?: pulumi.Input<boolean | undefined>;
+}
+
+export interface GateAgentSourceArgs {
+    /**
+     * Labels of the source's namespace. Unset, podLabels select only pods in the agent's own namespace.
+     */
+    namespaceLabels?: pulumi.Input<{[key: string]: pulumi.Input<string>} | undefined>;
+    /**
+     * Labels of the source pods. Unset, every pod in the matching namespaces.
+     */
+    podLabels?: pulumi.Input<{[key: string]: pulumi.Input<string>} | undefined>;
+}
+
 export interface GitHubAppArgs {
     appId: pulumi.Input<string>;
     installationId: pulumi.Input<string>;
@@ -61,6 +83,10 @@ export interface PoolHookArgs {
 export interface PoolNetworkPolicyArgs {
     allow?: pulumi.Input<pulumi.Input<inputs.NetworkAllowArgs>[] | undefined>;
     blockPrivate?: pulumi.Input<boolean | undefined>;
+    /**
+     * The GateAgent's namespace: runners may always reach its agent pods on port 8080. Defaults to arc-systems.
+     */
+    gateAgentNamespace?: pulumi.Input<string | undefined>;
 }
 
 export interface PrePullArgs {

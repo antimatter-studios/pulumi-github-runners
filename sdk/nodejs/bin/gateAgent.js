@@ -77,6 +77,7 @@ class GateAgent extends pulumi.ComponentResource {
             resourceInputs["interval"] = args?.interval;
             resourceInputs["listenerNamespace"] = args?.listenerNamespace;
             resourceInputs["namespace"] = args?.namespace;
+            resourceInputs["networkPolicy"] = args?.networkPolicy;
             resourceInputs["runnerNamespaces"] = args?.runnerNamespaces;
             resourceInputs["token"] = args?.token ? pulumi.secret(args.token) : undefined;
             resourceInputs["claimUrl"] = undefined /*out*/;
