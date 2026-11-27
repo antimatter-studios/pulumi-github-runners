@@ -253,7 +253,7 @@ func TestPodResourcesAreOneSharedBudget(t *testing.T) {
 	}
 	for name, limits := range map[string]map[string]any{
 		"runner": {"ephemeral-storage": "10Gi", "devic.es/kvm": "1"},
-		"docker": {"ephemeral-storage": "20Gi"},
+		"docker": {"ephemeral-storage": "20Gi", "devic.es/kvm": "1"},
 	} {
 		if got := get(t, container(t, tpl, name), "resources", "limits"); !reflect.DeepEqual(got, limits) {
 			t.Errorf("%s limits: got %v, want %v", name, got, limits)
