@@ -77,6 +77,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
+            resourceInputs["listenerScrapeAnnotations"] = args?.listenerScrapeAnnotations;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
             resourceInputs["memoryRequest"] = args?.memoryRequest;

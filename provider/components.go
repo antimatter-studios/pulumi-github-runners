@@ -2,6 +2,7 @@ package githubrunners
 
 import (
 	"encoding/json"
+	"strconv"
 
 	github "github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi-go-provider/infer"
@@ -23,6 +24,9 @@ const arcCharts = "oci://ghcr.io/actions/actions-runner-controller-charts"
 // namespaces carrying it.
 const poolNamespaceLabel = "github-runners.antimatter.studios/pool"
 
+// poolNamespacePrefix and a poolId name a Pool's namespace.
+const poolNamespacePrefix = "arc-runners-"
+
 // DefaultDevicePluginImage is squat/generic-device-plugin, pinned by digest, which offers host
 // devices as schedulable resources named devic.es/<name>.
 const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc84958301f054bf72d9753a7a2c9af3d6642a9844b34d1171b3f2cdb4a15f6"
@@ -37,6 +41,8 @@ type ControllerArgs struct {
 	Devices           []DeviceOffer `pulumi:"devices,optional"`
 	DevicePluginImage *string       `pulumi:"devicePluginImage,optional"`
 	PrePull           *PrePull      `pulumi:"prePull,optional"`
+
+	Monitoring *ControllerMonitoring `pulumi:"monitoring,optional"`
 }
 
 // DeviceOffer is a host device offered to pods as the resource devic.es/<name>.
@@ -51,6 +57,7 @@ func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Version, "The ARC chart version. Default "+DefaultARCVersion+".")
 	an.Describe(&a.ListenerMetrics, "Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.")
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
+	an.Describe(&a.Monitoring, "Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.")
 	an.Describe(&a.PrePull, "Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.")
 }
 
@@ -74,8 +81,17 @@ func controllerValues(a ControllerArgs) map[string]any {
 		},
 	}
 	if a.ListenerMetrics == nil || *a.ListenerMetrics {
-		// The listener metrics feed the runner-gate; the controller's own stay off.
-		v["metrics"] = map[string]any{"controllerManagerAddr": "0", "listenerAddr": ":8080", "listenerEndpoint": "/metrics"}
+		// The listener metrics feed the runner-gate. The controller's own are for monitoring, which
+		// reads whether each listener is running from them, and stay off without it.
+		controllerAddr := "0"
+		addr := ":" + strconv.Itoa(metricsPort)
+		if a.Monitoring != nil {
+			controllerAddr = addr
+		}
+		v["metrics"] = map[string]any{"controllerManagerAddr": controllerAddr, "listenerAddr": addr, "listenerEndpoint": metricsPath}
+	}
+	if m := a.Monitoring; m != nil && m.ScrapeAnnotations != nil && *m.ScrapeAnnotations {
+		v["podAnnotations"] = scrapeAnnotations()
 	}
 	return v
 }
@@ -95,6 +111,9 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 		if _, err := prePullPlan(*a.PrePull); err != nil {
 			return nil, err
 		}
+	}
+	if err := checkMonitoring(a); err != nil {
+		return nil, err
 	}
 	c := &Controller{}
 	if err := ctx.RegisterComponentResource("github-runners:index:Controller", name, c, opts...); err != nil {
@@ -169,6 +188,11 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 			return nil, err
 		}
 	}
+	if a.Monitoring != nil {
+		if err := newMonitoring(ctx, name, namespace, *a.Monitoring, child, pulumi.DependsOn([]pulumi.Resource{ns})); err != nil {
+			return nil, err
+		}
+	}
 	c.Namespace = release.Namespace.Elem()
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{"namespace": c.Namespace}); err != nil {
 		return nil, err
@@ -200,7 +224,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		return nil, err
 	}
 	child := pulumi.Parent(pool)
-	namespace := "arc-runners-" + a.ID
+	namespace := poolNamespacePrefix + a.ID
 	ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:   pulumi.String(namespace),

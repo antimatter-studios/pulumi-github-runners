@@ -60,6 +60,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
+            resourceInputs["listenerScrapeAnnotations"] = args?.listenerScrapeAnnotations;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
             resourceInputs["memoryRequest"] = args?.memoryRequest;
@@ -130,6 +131,10 @@ export interface PoolArgs {
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
     image?: string;
+    /**
+     * Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.
+     */
+    listenerScrapeAnnotations?: boolean;
     /**
      * Jobs at once. Default 2.
      */

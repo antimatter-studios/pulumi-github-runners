@@ -87,6 +87,65 @@ func TestTheChartKeepsThePodAsWritten(t *testing.T) {
 	}
 }
 
+// The monitoring values only matter as the pinned charts render them: the controller's metrics port,
+// which the PodMonitor scrapes by name, its pod labels, and the listener template the scale set
+// hands to the controller.
+func TestTheChartsRenderMonitoring(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pulls the charts")
+	}
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Skip("helm is not installed")
+	}
+	deployment := renderChart(t, "gha-runner-scale-set-controller", "arc", "Deployment",
+		controllerValues(ControllerArgs{Monitoring: &ControllerMonitoring{ScrapeAnnotations: bp(true)}}))
+	pod := get(t, deployment, "spec", "template").(map[string]any)
+	if got := get(t, pod, "metadata", "labels", "app.kubernetes.io/part-of"); got != controllerPodLabels["app.kubernetes.io/part-of"] {
+		t.Errorf("controller pod part-of %v", got)
+	}
+	if got := get(t, pod, "metadata", "annotations", "prometheus.io/port"); got != "8080" {
+		t.Errorf("controller scrape port %v", got)
+	}
+	manager := get(t, pod, "spec", "containers", 0)
+	if got := get(t, manager, "ports"); !jsonEqual(got, []any{map[string]any{"containerPort": 8080, "name": "metrics", "protocol": "TCP"}}) {
+		t.Errorf("controller ports %v", got)
+	}
+
+	a := basePool()
+	a.ListenerScrapeAnnotations = bp(true)
+	set := renderChart(t, "gha-runner-scale-set", a.ScaleSetName, "AutoscalingRunnerSet", scaleSetValues(a, "arc-github", ""),
+		"--set", "controllerServiceAccount.namespace=arc-systems", "--set", "controllerServiceAccount.name=arc-gha-rs-controller")
+	if got := get(t, set, "spec", "listenerTemplate"); !jsonEqual(got, scaleSetValues(a, "arc-github", "")["listenerTemplate"]) {
+		t.Errorf("rendered listener template %v", got)
+	}
+}
+
+// renderChart renders one of the pinned ARC charts and returns its object of the given kind.
+func renderChart(t *testing.T, chart, release, kind string, values map[string]any, extra ...string) map[string]any {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "values.json")
+	raw, err := json.Marshal(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"template", release, arcCharts + "/" + chart, "--version", DefaultARCVersion, "--namespace", "arc-systems", "-f", file}, extra...)
+	out, err := exec.Command("helm", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("helm template: %v\n%s", err, out)
+	}
+	for _, doc := range strings.Split(string(out), "\n---") {
+		var o map[string]any
+		if err := yaml.Unmarshal([]byte(doc), &o); err == nil && o != nil && o["kind"] == kind {
+			return o
+		}
+	}
+	t.Fatalf("no %s in:\n%s", kind, out)
+	return nil
+}
+
 func jsonEqual(a, b any) bool {
 	ra, _ := json.Marshal(a)
 	rb, _ := json.Marshal(b)

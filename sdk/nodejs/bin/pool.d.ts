@@ -69,6 +69,10 @@ export interface PoolArgs {
      */
     image?: string;
     /**
+     * Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.
+     */
+    listenerScrapeAnnotations?: boolean;
+    /**
      * Jobs at once. Default 2.
      */
     maxRunners?: number;

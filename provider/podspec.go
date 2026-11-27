@@ -400,6 +400,17 @@ func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[strin
 	if runnerGroup != "" {
 		v["runnerGroup"] = runnerGroup
 	}
+	if a.ListenerScrapeAnnotations != nil && *a.ListenerScrapeAnnotations {
+		// The CRD requires containers; naming the listener alone changes nothing in it. A template
+		// does replace the listener pod's grace period, set or not, so ARC's own is repeated here.
+		v["listenerTemplate"] = map[string]any{
+			"metadata": map[string]any{"annotations": scrapeAnnotations()},
+			"spec": map[string]any{
+				"containers":                    []any{map[string]any{"name": "listener"}},
+				"terminationGracePeriodSeconds": listenerGracePeriodSeconds,
+			},
+		}
+	}
 	return v
 }
 

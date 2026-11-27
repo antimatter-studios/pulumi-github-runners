@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `Controller.monitoring`: opt-in wiring for a scraper (#13): a `PodMonitor`, a `PrometheusRule`
+  alerting on listeners that are not running or missing and on jobs queued without a runner, a
+  Grafana dashboard ConfigMap, scrape annotations on the controller pod, and a NetworkPolicy that
+  admits only the listed scrapers and the GateAgent to the metrics port. Setting it also serves the
+  controller's own metrics. Off by default.
+- `Pool.listenerScrapeAnnotations`: Prometheus scrape annotations on the pool's listener pod. Off
+  by default.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent
