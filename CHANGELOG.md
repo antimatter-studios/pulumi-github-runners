@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `GateAgent` admits only pool namespaces (labelled `github-runners.antimatter.studios/pool`, which
+  `Pool` now sets) to its port 8080, on by default; `networkPolicy.allow` adds sources and
+  `networkPolicy.enabled: false` opts out. A pool's `networkPolicy` now lets its runners reach the
+  agent, in `networkPolicy.gateAgentNamespace` (default `arc-systems`).
 - `Controller.prePull`: an optional DaemonSet that keeps the runner and podman images (or the
   listed `images`) on every node, so pools scaling from zero skip the image pull.
 - `Pool.env`: every job's default environment, e.g. parallelism hints (GOMAXPROCS, CARGO_BUILD_JOBS,

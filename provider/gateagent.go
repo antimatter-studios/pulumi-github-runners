@@ -4,6 +4,7 @@ import (
 	"github.com/pulumi/pulumi-go-provider/infer"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	rbacv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/rbac/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -70,6 +71,15 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 		return nil, err
 	}
 	deps = append(deps, binding)
+
+	if a.NetworkPolicy == nil || a.NetworkPolicy.Enabled == nil || *a.NetworkPolicy.Enabled {
+		policy, err := networkingv1.NewNetworkPolicy(ctx, name+"-ingress", gateAgentNetworkPolicy(a, namespace), child)
+		if err != nil {
+			return nil, err
+		}
+		// Before the Deployment, so the agent never serves unguarded.
+		deps = append(deps, policy)
+	}
 
 	if _, err := appsv1.NewDeployment(ctx, name+"-agent", gateAgentDeployment(a, namespace),
 		child, pulumi.DependsOn(deps)); err != nil {

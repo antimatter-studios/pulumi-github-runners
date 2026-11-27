@@ -16,6 +16,20 @@ type GateAgentArgs struct {
 	RunnerNamespaces  []string           `pulumi:"runnerNamespaces"`
 	Interval          *string            `pulumi:"interval,optional"`
 	ImagePull         GateAgentImagePull `pulumi:"imagePull"`
+
+	NetworkPolicy *GateAgentNetworkPolicy `pulumi:"networkPolicy,optional"`
+}
+
+// GateAgentNetworkPolicy guards the agent's port: runner namespaces, plus the sources listed here.
+type GateAgentNetworkPolicy struct {
+	Enabled *bool             `pulumi:"enabled,optional"`
+	Allow   []GateAgentSource `pulumi:"allow,optional"`
+}
+
+// GateAgentSource is one extra source: pods matching the selectors.
+type GateAgentSource struct {
+	NamespaceLabels map[string]string `pulumi:"namespaceLabels,optional"`
+	PodLabels       map[string]string `pulumi:"podLabels,optional"`
 }
 
 // GateAgentImagePull supplies the credentials for the agent image registry.
@@ -35,6 +49,17 @@ func (a *GateAgentArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.RunnerNamespaces, "Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.")
 	an.Describe(&a.Interval, "How often to push a pool snapshot, e.g. 10s. Defaults to the agent's interval.")
 	an.Describe(&a.ImagePull, "Registry credentials for the agent image's pull Secret.")
+	an.Describe(&a.NetworkPolicy, "Who may reach the agent's port 8080. By default only pods in namespaces labelled "+poolNamespaceLabel+", which every Pool's namespace is.")
+}
+
+func (p *GateAgentNetworkPolicy) Annotate(an infer.Annotator) {
+	an.Describe(&p.Enabled, "Create the agent's ingress NetworkPolicy. Default true; false lets any pod reach the agent.")
+	an.Describe(&p.Allow, "Extra sources allowed to reach port 8080, e.g. a metrics scraper: {namespaceLabels: {\"kubernetes.io/metadata.name\": \"monitoring\"}}. Runner namespaces not created by a Pool need an entry too.")
+}
+
+func (s *GateAgentSource) Annotate(an infer.Annotator) {
+	an.Describe(&s.NamespaceLabels, "Labels of the source's namespace. Unset, podLabels select only pods in the agent's own namespace.")
+	an.Describe(&s.PodLabels, "Labels of the source pods. Unset, every pod in the matching namespaces.")
 }
 
 func (a *GateAgentImagePull) Annotate(an infer.Annotator) {
@@ -116,8 +141,9 @@ type PoolHook struct {
 
 // PoolNetworkPolicy keeps runner pods off private addresses, except where allowed.
 type PoolNetworkPolicy struct {
-	BlockPrivate *bool          `pulumi:"blockPrivate,optional"`
-	Allow        []NetworkAllow `pulumi:"allow,optional"`
+	BlockPrivate       *bool          `pulumi:"blockPrivate,optional"`
+	Allow              []NetworkAllow `pulumi:"allow,optional"`
+	GateAgentNamespace *string        `pulumi:"gateAgentNamespace,optional"`
 }
 
 // NetworkAllow is one exception: pods matching the selectors, on these TCP ports.
@@ -148,6 +174,10 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Env, "Every job's default environment, which a job can override, e.g. {GOMAXPROCS: \"2\", CARGO_BUILD_JOBS: \"2\", FLTH_RESOURCE_PROFILE: \"low\"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.")
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
+}
+
+func (p *PoolNetworkPolicy) Annotate(an infer.Annotator) {
+	an.Describe(&p.GateAgentNamespace, "The GateAgent's namespace: runners may always reach its agent pods on port 8080. Defaults to "+defaultGateAgentNamespace+".")
 }
 
 func (h *PoolHook) Annotate(an infer.Annotator) {

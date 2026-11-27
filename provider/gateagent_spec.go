@@ -12,6 +12,7 @@ import (
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	rbacv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/rbac/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -50,7 +51,21 @@ func checkGateAgent(a GateAgentArgs) error {
 	if strings.TrimSpace(a.ImagePull.Username) == "" || a.ImagePull.Password == nil {
 		return errors.New("gate agent: imagePull.username and imagePull.password are required")
 	}
+	if a.NetworkPolicy != nil {
+		for _, source := range a.NetworkPolicy.Allow {
+			// Kubernetes refuses a peer that selects nothing.
+			if len(source.NamespaceLabels) == 0 && len(source.PodLabels) == 0 {
+				return errors.New("gate agent: every networkPolicy.allow entry needs namespaceLabels or podLabels")
+			}
+		}
+	}
 	return nil
+}
+
+// gateAgentPodLabels are what the Service and the ingress policy select the agent by, and what a
+// Pool's egress policy lets its runners reach.
+func gateAgentPodLabels() pulumi.StringMap {
+	return pulumi.StringMap{"app": pulumi.String(gateAgentName)}
 }
 
 func gateAgentClaimURL(namespace string) string {
@@ -96,7 +111,7 @@ func gateAgentImagePullSecret(namespace string, a GateAgentImagePull) *corev1.Se
 }
 
 func gateAgentDeployment(a GateAgentArgs, namespace string) *appsv1.DeploymentArgs {
-	labels := pulumi.StringMap{"app": pulumi.String(gateAgentName)}
+	labels := gateAgentPodLabels()
 	listenerNamespace := orDefault(a.ListenerNamespace, defaultGateAgentNamespace)
 	env := corev1.EnvVarArray{
 		&corev1.EnvVarArgs{Name: pulumi.String("GATE_AGENT_URL"), Value: pulumi.String(orDefault(a.GateURL, defaultGateAgentURL))},
@@ -163,10 +178,50 @@ func gateAgentService(namespace string) *corev1.ServiceArgs {
 		Metadata: gateAgentMetadata(gateAgentName, namespace),
 		Spec: &corev1.ServiceSpecArgs{
 			Type:     pulumi.String("ClusterIP"),
-			Selector: pulumi.StringMap{"app": pulumi.String(gateAgentName)},
+			Selector: gateAgentPodLabels(),
 			Ports: corev1.ServicePortArray{
 				&corev1.ServicePortArgs{Port: pulumi.Int(gateAgentPort), TargetPort: pulumi.Int(gateAgentPort)},
 			},
+		},
+	}
+}
+
+// gateAgentNetworkPolicy admits runner namespaces, and the listed extra sources, to the agent's
+// port. The agent forwards a claim with its own token, so whoever reaches /claim acts with it. The
+// policy is ingress only: the agent still reaches the gate and the API server.
+func gateAgentNetworkPolicy(a GateAgentArgs, namespace string) *networkingv1.NetworkPolicyArgs {
+	// By the label every Pool puts on its namespace, so a new pool needs no change here.
+	from := networkingv1.NetworkPolicyPeerArray{&networkingv1.NetworkPolicyPeerArgs{
+		NamespaceSelector: &metav1.LabelSelectorArgs{
+			MatchExpressions: metav1.LabelSelectorRequirementArray{&metav1.LabelSelectorRequirementArgs{
+				Key:      pulumi.String(poolNamespaceLabel),
+				Operator: pulumi.String("Exists"),
+			}},
+		},
+	}}
+	if a.NetworkPolicy != nil {
+		for _, source := range a.NetworkPolicy.Allow {
+			peer := &networkingv1.NetworkPolicyPeerArgs{}
+			if len(source.NamespaceLabels) > 0 {
+				peer.NamespaceSelector = &metav1.LabelSelectorArgs{MatchLabels: pulumi.ToStringMap(source.NamespaceLabels)}
+			}
+			if len(source.PodLabels) > 0 {
+				peer.PodSelector = &metav1.LabelSelectorArgs{MatchLabels: pulumi.ToStringMap(source.PodLabels)}
+			}
+			from = append(from, peer)
+		}
+	}
+	return &networkingv1.NetworkPolicyArgs{
+		Metadata: gateAgentMetadata(gateAgentName, namespace),
+		Spec: &networkingv1.NetworkPolicySpecArgs{
+			PodSelector: &metav1.LabelSelectorArgs{MatchLabels: gateAgentPodLabels()},
+			PolicyTypes: pulumi.ToStringArray([]string{"Ingress"}),
+			Ingress: networkingv1.NetworkPolicyIngressRuleArray{&networkingv1.NetworkPolicyIngressRuleArgs{
+				From: from,
+				Ports: networkingv1.NetworkPolicyPortArray{
+					&networkingv1.NetworkPolicyPortArgs{Protocol: pulumi.String("TCP"), Port: pulumi.Int(gateAgentPort)},
+				},
+			}},
 		},
 	}
 }

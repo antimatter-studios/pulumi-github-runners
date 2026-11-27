@@ -37,6 +37,17 @@ and run `pnpm install --frozen-lockfile` in this checkout too, so the SDK's own 
 Releases attach the plugin for darwin-arm64, linux-amd64 and linux-arm64 to a GitHub release, which
 Pulumi downloads by itself when a program pins that version.
 
+### Network policies
+
+`GateAgent` forwards every claim with its own token, so by default a NetworkPolicy admits only
+namespaces labelled `github-runners.antimatter.studios/pool` to its port 8080. `Pool` puts that label
+on its namespace. Other sources, such as a metrics scraper or a runner namespace no `Pool` created,
+go in `networkPolicy.allow`; `networkPolicy.enabled: false` removes the policy. The agent's own
+egress is not restricted. Both policies need a network plugin that enforces NetworkPolicy.
+
+A pool with a `networkPolicy` always lets its runners reach the agent in `arc-systems` on port 8080.
+Set `networkPolicy.gateAgentNamespace` when the agent runs elsewhere.
+
 ### Pool credentials
 
 Set exactly one of `app` or `token` on each pool. The recommended credential is a GitHub App

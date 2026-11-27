@@ -19,6 +19,10 @@ const DefaultARCVersion = "0.15.1"
 
 const arcCharts = "oci://ghcr.io/actions/actions-runner-controller-charts"
 
+// poolNamespaceLabel marks a Pool's namespace with its poolId. The GateAgent's ingress policy admits
+// namespaces carrying it.
+const poolNamespaceLabel = "github-runners.antimatter.studios/pool"
+
 // DefaultDevicePluginImage is squat/generic-device-plugin, pinned by digest, which offers host
 // devices as schedulable resources named devic.es/<name>.
 const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc84958301f054bf72d9753a7a2c9af3d6642a9844b34d1171b3f2cdb4a15f6"
@@ -198,7 +202,10 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	child := pulumi.Parent(pool)
 	namespace := "arc-runners-" + a.ID
 	ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
-		Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(namespace)},
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:   pulumi.String(namespace),
+			Labels: pulumi.StringMap{poolNamespaceLabel: pulumi.String(a.ID)},
+		},
 	}, child)
 	if err != nil {
 		return nil, err
