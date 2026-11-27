@@ -69,6 +69,14 @@ export interface PoolArgs {
      */
     image?: string;
     /**
+     * The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.
+     */
+    listenerPriorityClassName?: string;
+    /**
+     * The listener container's requests and limits. Default: none.
+     */
+    listenerResources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
+    /**
      * Jobs at once. Default 2.
      */
     maxRunners?: number;

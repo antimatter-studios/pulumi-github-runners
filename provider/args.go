@@ -114,6 +114,9 @@ type PoolArgs struct {
 	Hook          *PoolHook          `pulumi:"hook,optional"`
 	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
 	Slots         *PoolSlots         `pulumi:"slots,optional"`
+
+	ListenerPriorityClassName *string             `pulumi:"listenerPriorityClassName,optional"`
+	ListenerResources         *ContainerResources `pulumi:"listenerResources,optional"`
 }
 
 // PoolSlots makes each runner pod take one of its node's runner slots, an extended resource the
@@ -192,6 +195,8 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
 	an.Describe(&a.Slots, "Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.")
+	an.Describe(&a.ListenerPriorityClassName, "The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.")
+	an.Describe(&a.ListenerResources, "The listener container's requests and limits. Default: none.")
 }
 
 func (s *PoolSlots) Annotate(an infer.Annotator) {

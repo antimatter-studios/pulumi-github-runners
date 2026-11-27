@@ -41,6 +41,14 @@ export interface ControllerArgs {
      */
     prePull?: pulumi.Input<inputs.PrePullArgs | undefined>;
     /**
+     * The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.
+     */
+    priorityClassName?: string;
+    /**
+     * The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.
+     */
+    resources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
+    /**
      * The ARC chart version. Default 0.15.1.
      */
     version?: string;

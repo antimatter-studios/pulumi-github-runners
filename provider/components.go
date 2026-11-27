@@ -2,6 +2,7 @@ package githubrunners
 
 import (
 	"encoding/json"
+	"errors"
 
 	github "github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi-go-provider/infer"
@@ -37,6 +38,29 @@ type ControllerArgs struct {
 	Devices           []DeviceOffer `pulumi:"devices,optional"`
 	DevicePluginImage *string       `pulumi:"devicePluginImage,optional"`
 	PrePull           *PrePull      `pulumi:"prePull,optional"`
+
+	PriorityClassName *string             `pulumi:"priorityClassName,optional"`
+	Resources         *ContainerResources `pulumi:"resources,optional"`
+}
+
+// ContainerResources are one container's requests and limits.
+type ContainerResources struct {
+	CPURequest    *string `pulumi:"cpuRequest,optional"`
+	MemoryRequest *string `pulumi:"memoryRequest,optional"`
+	CPULimit      *string `pulumi:"cpuLimit,optional"`
+	MemoryLimit   *string `pulumi:"memoryLimit,optional"`
+}
+
+// values is the Kubernetes resources block holding what is set, and nothing else.
+func (r ContainerResources) values() map[string]any {
+	out := map[string]any{}
+	if req := quantities(r.CPURequest, r.MemoryRequest); len(req) > 0 {
+		out["requests"] = req
+	}
+	if lim := quantities(r.CPULimit, r.MemoryLimit); len(lim) > 0 {
+		out["limits"] = lim
+	}
+	return out
 }
 
 // DeviceOffer is a host device offered to pods as the resource devic.es/<name>.
@@ -52,6 +76,15 @@ func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.ListenerMetrics, "Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.")
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
 	an.Describe(&a.PrePull, "Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.")
+	an.Describe(&a.PriorityClassName, "The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.")
+	an.Describe(&a.Resources, "The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.")
+}
+
+func (r *ContainerResources) Annotate(an infer.Annotator) {
+	an.Describe(&r.CPURequest, "CPU request, e.g. 50m.")
+	an.Describe(&r.MemoryRequest, "Memory request, e.g. 128Mi.")
+	an.Describe(&r.CPULimit, "CPU limit. Default: none.")
+	an.Describe(&r.MemoryLimit, "Memory limit. Default: none.")
 }
 
 // Controller is ARC's controller, and the device plugins runner pods take devices from.
@@ -72,6 +105,12 @@ func controllerValues(a ControllerArgs) map[string]any {
 			"requests": map[string]any{"cpu": "100m", "memory": "128Mi"},
 			"limits":   map[string]any{"cpu": "500m", "memory": "512Mi"},
 		},
+	}
+	if a.Resources != nil {
+		v["resources"] = a.Resources.values()
+	}
+	if class := orDefault(a.PriorityClassName, ""); class != "" {
+		v["priorityClassName"] = class
 	}
 	if a.ListenerMetrics == nil || *a.ListenerMetrics {
 		// The listener metrics feed the runner-gate; the controller's own stay off.
@@ -95,6 +134,9 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 		if _, err := prePullPlan(*a.PrePull); err != nil {
 			return nil, err
 		}
+	}
+	if a.Resources != nil && len(a.Resources.values()) == 0 {
+		return nil, errors.New("controller: resources sets no request or limit; leave it out to keep the defaults")
 	}
 	c := &Controller{}
 	if err := ctx.RegisterComponentResource("github-runners:index:Controller", name, c, opts...); err != nil {

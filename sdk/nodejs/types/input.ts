@@ -5,6 +5,25 @@ import * as pulumi from "@pulumi/pulumi";
 import * as inputs from "../types/input";
 import * as outputs from "../types/output";
 
+export interface ContainerResourcesArgs {
+    /**
+     * CPU limit. Default: none.
+     */
+    cpuLimit?: pulumi.Input<string | undefined>;
+    /**
+     * CPU request, e.g. 50m.
+     */
+    cpuRequest?: pulumi.Input<string | undefined>;
+    /**
+     * Memory limit. Default: none.
+     */
+    memoryLimit?: pulumi.Input<string | undefined>;
+    /**
+     * Memory request, e.g. 128Mi.
+     */
+    memoryRequest?: pulumi.Input<string | undefined>;
+}
+
 export interface DeviceOfferArgs {
     count?: pulumi.Input<number | undefined>;
     name: pulumi.Input<string>;

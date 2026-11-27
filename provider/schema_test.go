@@ -69,6 +69,41 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	}
 }
 
+func TestSchemaOffersPriorityAndResourcesForControllerAndListeners(t *testing.T) {
+	server, err := integration.NewServer(context.Background(), Name, semver.MustParse("0.0.0"), integration.WithProvider(providerWith("http://unused")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := server.GetSchema(p.GetSchemaRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec schema.PackageSpec
+	if err := json.Unmarshal([]byte(resp.Schema), &spec); err != nil {
+		t.Fatal(err)
+	}
+	for resource, inputs := range map[string][2]string{
+		"Controller": {"priorityClassName", "resources"},
+		"Pool":       {"listenerPriorityClassName", "listenerResources"},
+	} {
+		r := spec.Resources["github-runners:index:"+resource]
+		for _, name := range inputs {
+			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
+				t.Errorf("%s schema must offer %s as an optional input", resource, name)
+			}
+		}
+		resources := spec.Types[strings.TrimPrefix(r.InputProperties[inputs[1]].Ref, "#/types/")]
+		if len(resources.Required) != 0 {
+			t.Errorf("%s %s requires %v", resource, inputs[1], resources.Required)
+		}
+		for _, field := range []string{"cpuRequest", "memoryRequest", "cpuLimit", "memoryLimit"} {
+			if resources.Properties[field].Type != "string" {
+				t.Errorf("%s %s lacks %s", resource, inputs[1], field)
+			}
+		}
+	}
+}
+
 // No component input may be called `id` or `urn`: Pulumi reserves both on every resource and strips
 // them from a component's inputs, so the component sees them empty. A Pool declared with `id` failed
 // every real preview with `pool id "" must be a DNS-safe name`, while every unit test passed.
