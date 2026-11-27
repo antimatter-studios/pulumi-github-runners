@@ -79,6 +79,11 @@ func TestNoComponentInputUsesAReservedName(t *testing.T) {
 	if _, ok := schema.Resources["github-runners:index:Pool"].InputProperties["poolId"]; !ok {
 		t.Fatal("Pool has no poolId input")
 	}
+	for _, component := range []string{"Controller", "Pool", "GateAgent"} {
+		if r, ok := schema.Resources["github-runners:index:"+component]; !ok || !r.IsComponent {
+			t.Fatalf("schema lacks the %s component, so this test would not cover it", component)
+		}
+	}
 	for token, r := range schema.Resources {
 		for _, reserved := range []string{"id", "urn"} {
 			if _, ok := r.InputProperties[reserved]; ok {
