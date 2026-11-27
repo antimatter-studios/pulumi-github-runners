@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `Pool.gateClaim` (`{agentNamespace}` or `{url}`): the plugin ships the runner-gate claim script,
+  runs it after the fork check and before `hook.script`, and sets `RUNNER_GATE_URL`. It fails open
+  when the gate cannot be reached. Pools no longer need their own copy of the script.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent

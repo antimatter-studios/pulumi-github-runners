@@ -58,6 +58,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["env"] = args?.env;
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
+            resourceInputs["gateClaim"] = args?.gateClaim;
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
             resourceInputs["maxRunners"] = args?.maxRunners;
@@ -122,6 +123,10 @@ export interface PoolArgs {
     env?: pulumi.Input<{[key: string]: string} | undefined>;
     ephemeralStorageLimit?: string;
     ephemeralStorageRequest?: string;
+    /**
+     * Claim each job's runner-gate reservation through the cluster's gate agent, after the fork check and before hook.script. A gate that cannot be reached lets the job run; an expired reservation fails it. Off unless set.
+     */
+    gateClaim?: pulumi.Input<inputs.PoolGateClaimArgs | undefined>;
     /**
      * What runs before every job's first step.
      */

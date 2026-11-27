@@ -114,6 +114,14 @@ type PoolArgs struct {
 	Hook          *PoolHook          `pulumi:"hook,optional"`
 	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
 	Slots         *PoolSlots         `pulumi:"slots,optional"`
+	GateClaim     *PoolGateClaim     `pulumi:"gateClaim,optional"`
+}
+
+// PoolGateClaim has every job claim its runner-gate reservation before its first step. Exactly one
+// field is set.
+type PoolGateClaim struct {
+	URL            *string `pulumi:"url,optional"`
+	AgentNamespace *string `pulumi:"agentNamespace,optional"`
 }
 
 // PoolSlots makes each runner pod take one of its node's runner slots, an extended resource the
@@ -192,6 +200,12 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
 	an.Describe(&a.Slots, "Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.")
+	an.Describe(&a.GateClaim, "Claim each job's runner-gate reservation through the cluster's gate agent, after the fork check and before hook.script. A gate that cannot be reached lets the job run; an expired reservation fails it. Off unless set.")
+}
+
+func (c *PoolGateClaim) Annotate(an infer.Annotator) {
+	an.Describe(&c.URL, "The claim endpoint's base URL, set as RUNNER_GATE_URL. Set exactly one of url or agentNamespace. With a networkPolicy, an in-cluster URL also needs the policy to allow it.")
+	an.Describe(&c.AgentNamespace, "The GateAgent's namespace: the URL is http://runner-gate-agent.<namespace>.svc:8080, and it is the default for networkPolicy.gateAgentNamespace. Set exactly one of url or agentNamespace.")
 }
 
 func (s *PoolSlots) Annotate(an infer.Annotator) {
@@ -205,7 +219,7 @@ func (p *PoolNetworkPolicy) Annotate(an infer.Annotator) {
 
 func (h *PoolHook) Annotate(an infer.Annotator) {
 	an.Describe(&h.RejectForks, "Fail every job started by a pull request from a fork. Default true.")
-	an.Describe(&h.Script, "A script run after the fork check; a non-zero exit fails the job.")
+	an.Describe(&h.Script, "A script run after the fork check and the gateClaim, if set; a non-zero exit fails the job.")
 	an.Describe(&h.Files, "Extra files beside the script in /etc/arc-hooks.")
 	an.Describe(&h.Env, "Environment for the runner container, which the hook sees.")
 }

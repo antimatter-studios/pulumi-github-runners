@@ -55,7 +55,7 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	}
 	// The load-aware capacity options are opt-in: a stack that does not set them keeps working.
 	pool := spec.Resources["github-runners:index:Pool"]
-	for resource, inputs := range map[string][]string{"Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
+	for resource, inputs := range map[string][]string{"Pool": {"slots", "gateClaim"}, "GateAgent": {"manageSlots"}} {
 		r := spec.Resources["github-runners:index:"+resource]
 		for _, name := range inputs {
 			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
@@ -66,6 +66,10 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	slots := spec.Types[strings.TrimPrefix(pool.InputProperties["slots"].Ref, "#/types/")]
 	if len(slots.Required) != 0 || slots.Properties["enabled"].Type != "boolean" || slots.Properties["resourceName"].Type != "string" {
 		t.Errorf("Pool slots type = %+v", slots)
+	}
+	claim := spec.Types[strings.TrimPrefix(pool.InputProperties["gateClaim"].Ref, "#/types/")]
+	if len(claim.Required) != 0 || claim.Properties["url"].Type != "string" || claim.Properties["agentNamespace"].Type != "string" {
+		t.Errorf("Pool gateClaim type = %+v", claim)
 	}
 }
 

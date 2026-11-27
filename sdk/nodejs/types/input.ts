@@ -61,6 +61,17 @@ export interface PodResourcesArgs {
     memoryRequest?: pulumi.Input<string | undefined>;
 }
 
+export interface PoolGateClaimArgs {
+    /**
+     * The GateAgent's namespace: the URL is http://runner-gate-agent.<namespace>.svc:8080, and it is the default for networkPolicy.gateAgentNamespace. Set exactly one of url or agentNamespace.
+     */
+    agentNamespace?: pulumi.Input<string | undefined>;
+    /**
+     * The claim endpoint's base URL, set as RUNNER_GATE_URL. Set exactly one of url or agentNamespace. With a networkPolicy, an in-cluster URL also needs the policy to allow it.
+     */
+    url?: pulumi.Input<string | undefined>;
+}
+
 export interface PoolHookArgs {
     /**
      * Environment for the runner container, which the hook sees.
@@ -75,7 +86,7 @@ export interface PoolHookArgs {
      */
     rejectForks?: pulumi.Input<boolean | undefined>;
     /**
-     * A script run after the fork check; a non-zero exit fails the job.
+     * A script run after the fork check and the gateClaim, if set; a non-zero exit fails the job.
      */
     script?: pulumi.Input<string | undefined>;
 }

@@ -235,7 +235,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	if a.Hook != nil {
 		hook = *a.Hook
 	}
-	files, err := hookFiles(hook)
+	files, err := hookFiles(hook, a.GateClaim != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	deps := []pulumi.Resource{ns, secret, hooks, podman}
 
 	if a.NetworkPolicy != nil {
-		spec, err := toNetworkPolicySpec(networkPolicySpec(*a.NetworkPolicy))
+		spec, err := toNetworkPolicySpec(networkPolicySpec(poolNetworkPolicy(a)))
 		if err != nil {
 			return nil, err
 		}

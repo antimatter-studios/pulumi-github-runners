@@ -182,6 +182,26 @@ func TestPoolWithAGitHubAppAndNoGroup(t *testing.T) {
 	}
 }
 
+func TestPoolWithAGateClaim(t *testing.T) {
+	a := basePool()
+	a.Token = stringInput("t")
+	a.GateClaim = &PoolGateClaim{AgentNamespace: sp("gate")}
+	a.NetworkPolicy = &PoolNetworkPolicy{}
+	m := runPool(t, a)
+	files := m.find(t, "kubernetes:core/v1:ConfigMap", "-hooks").inputs["data"].ObjectValue()
+	if !files.HasValue("gate-claim.sh") || !strings.Contains(files[jobStartedHook].StringValue(), "/etc/arc-hooks/gate-claim.sh") {
+		t.Fatalf("hook files %v", files.StableKeys())
+	}
+	release := m.find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
+	if got := allStrings(release.inputs["values"]); !strings.Contains(got, "http://runner-gate-agent.gate.svc:8080\n") {
+		t.Fatalf("claim URL missing in %s", got)
+	}
+	policy := m.find(t, "kubernetes:networking.k8s.io/v1:NetworkPolicy", "-egress")
+	if got := allStrings(resource.NewObjectProperty(policy.inputs)); !strings.Contains(got, "gate\n") {
+		t.Fatalf("egress does not reach the gate namespace: %s", got)
+	}
+}
+
 func TestAnInvalidPoolCreatesNothing(t *testing.T) {
 	a := basePool()
 	m := &mocks{}
