@@ -1,0 +1,115 @@
+package githubrunners
+
+import (
+	"github.com/pulumi/pulumi-go-provider/infer"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+// PoolArgs are a Pool's inputs: one organisation's runners on one machine.
+type PoolArgs struct {
+	ID           string `pulumi:"id"`
+	ConfigURL    string `pulumi:"configUrl"`
+	ScaleSetName string `pulumi:"scaleSetName"`
+
+	Token      pulumi.StringInput `pulumi:"token,optional" provider:"secret"`
+	App        *GitHubApp         `pulumi:"app,optional"`
+	AdminToken pulumi.StringInput `pulumi:"adminToken,optional" provider:"secret"`
+
+	RunnerGroup    *RunnerGroup `pulumi:"runnerGroup,optional"`
+	ForkPrApproval *string      `pulumi:"forkPrApproval,optional"`
+
+	MinRunners *int    `pulumi:"minRunners,optional"`
+	MaxRunners *int    `pulumi:"maxRunners,optional"`
+	Image      *string `pulumi:"image,optional"`
+
+	PodmanImage *string `pulumi:"podmanImage,optional"`
+
+	CPURequest              *string       `pulumi:"cpuRequest,optional"`
+	CPULimit                *string       `pulumi:"cpuLimit,optional"`
+	MemoryRequest           *string       `pulumi:"memoryRequest,optional"`
+	MemoryLimit             *string       `pulumi:"memoryLimit,optional"`
+	EphemeralStorageRequest *string       `pulumi:"ephemeralStorageRequest,optional"`
+	EphemeralStorageLimit   *string       `pulumi:"ephemeralStorageLimit,optional"`
+	WorkVolumeSize          *string       `pulumi:"workVolumeSize,optional"`
+	DockerMemoryLimit       *string       `pulumi:"dockerMemoryLimit,optional"`
+	DockerStorageLimit      *string       `pulumi:"dockerStorageLimit,optional"`
+	PodResources            *PodResources `pulumi:"podResources,optional"`
+
+	TopologySpread     *bool             `pulumi:"topologySpread,optional"`
+	Devices            map[string]string `pulumi:"devices,optional"`
+	SupplementalGroups []int             `pulumi:"supplementalGroups,optional"`
+
+	Hook          *PoolHook          `pulumi:"hook,optional"`
+	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
+}
+
+// GitHubApp is ARC's credential when a pool uses a GitHub App instead of a PAT.
+type GitHubApp struct {
+	AppID          string             `pulumi:"appId"`
+	InstallationID string             `pulumi:"installationId"`
+	PrivateKey     pulumi.StringInput `pulumi:"privateKey" provider:"secret"`
+}
+
+// RunnerGroup is the organisation's runner group the pool's runners join, created with adminToken.
+type RunnerGroup struct {
+	Name                     string  `pulumi:"name"`
+	Visibility               *string `pulumi:"visibility,optional"`
+	AllowsPublicRepositories *bool   `pulumi:"allowsPublicRepositories,optional"`
+}
+
+// PodResources is one budget for the whole runner pod (pod-level resources, Kubernetes 1.34+).
+type PodResources struct {
+	CPULimit      *string `pulumi:"cpuLimit,optional"`
+	MemoryLimit   *string `pulumi:"memoryLimit,optional"`
+	CPURequest    *string `pulumi:"cpuRequest,optional"`
+	MemoryRequest *string `pulumi:"memoryRequest,optional"`
+}
+
+// PoolHook is what runs before every job's first step.
+type PoolHook struct {
+	RejectForks *bool             `pulumi:"rejectForks,optional"`
+	Script      *string           `pulumi:"script,optional"`
+	Files       map[string]string `pulumi:"files,optional"`
+	Env         map[string]string `pulumi:"env,optional"`
+}
+
+// PoolNetworkPolicy keeps runner pods off private addresses, except where allowed.
+type PoolNetworkPolicy struct {
+	BlockPrivate *bool          `pulumi:"blockPrivate,optional"`
+	Allow        []NetworkAllow `pulumi:"allow,optional"`
+}
+
+// NetworkAllow is one exception: pods matching the selectors, on these TCP ports.
+type NetworkAllow struct {
+	NamespaceLabels map[string]string `pulumi:"namespaceLabels,optional"`
+	PodLabels       map[string]string `pulumi:"podLabels,optional"`
+	Ports           []int             `pulumi:"ports,optional"`
+}
+
+func (a *PoolArgs) Annotate(an infer.Annotator) {
+	an.Describe(&a.ID, "A DNS-safe key for the pool; its runners live in namespace arc-runners-<id>.")
+	an.Describe(&a.ConfigURL, "https://github.com/<org>, or a repository URL for repository runners.")
+	an.Describe(&a.ScaleSetName, "The runs-on label: <machine>-<os>-<arch>, e.g. ryzen-linux-x64.")
+	an.Describe(&a.Token, "A fine-grained PAT for ARC: Self-hosted runners read and write, and repository Administration read. Give this or app.")
+	an.Describe(&a.App, "A GitHub App for ARC instead of a PAT.")
+	an.Describe(&a.AdminToken, "A PAT with organisation Administration read and write, used only to manage the runner group and the fork PR approval policy. It never enters the cluster.")
+	an.Describe(&a.RunnerGroup, "The organisation's runner group the runners join, created here.")
+	an.Describe(&a.ForkPrApproval, "Hold the organisation's fork PR approval policy at this value.")
+	an.Describe(&a.MinRunners, "Idle runners kept ready. Default 0.")
+	an.Describe(&a.MaxRunners, "Jobs at once. Default 2.")
+	an.Describe(&a.Image, "The runner image, pinned by digest. Default: the antimatter actions-runner image.")
+	an.Describe(&a.CPULimit, "The runner container's CPU limit. Default none: a job uses whatever CPU is free.")
+	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share.")
+	an.Describe(&a.TopologySpread, "Spread the pool's runners evenly across nodes, hard. For multi-node clusters.")
+	an.Describe(&a.Devices, "Device-plugin resources each runner gets, e.g. {\"devic.es/fuse\": \"1\"}.")
+	an.Describe(&a.SupplementalGroups, "Groups the runner pod's processes join.")
+	an.Describe(&a.Hook, "What runs before every job's first step.")
+	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
+}
+
+func (h *PoolHook) Annotate(an infer.Annotator) {
+	an.Describe(&h.RejectForks, "Fail every job started by a pull request from a fork. Default true.")
+	an.Describe(&h.Script, "A script run after the fork check; a non-zero exit fails the job.")
+	an.Describe(&h.Files, "Extra files beside the script in /etc/arc-hooks.")
+	an.Describe(&h.Env, "Environment for the runner container, which the hook sees.")
+}
