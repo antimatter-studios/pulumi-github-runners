@@ -141,8 +141,8 @@ func gateAgentDeployment(a GateAgentArgs, namespace string) *appsv1.DeploymentAr
 							&corev1.ContainerPortArgs{ContainerPort: pulumi.Int(gateAgentPort)},
 						},
 						Resources: &corev1.ResourceRequirementsArgs{
+							// Requests only, like runner pods: no CPU or memory limit by default.
 							Requests: pulumi.ToStringMap(map[string]string{"cpu": "10m", "memory": "32Mi"}),
-							Limits:   pulumi.ToStringMap(map[string]string{"cpu": "200m", "memory": "64Mi"}),
 						},
 						SecurityContext: &corev1.SecurityContextArgs{
 							RunAsNonRoot:             pulumi.Bool(true),

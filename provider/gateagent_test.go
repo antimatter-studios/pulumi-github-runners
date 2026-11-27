@@ -198,9 +198,9 @@ func checkGateAgentWorkload(t *testing.T, m *mocks) {
 		t.Fatal("pod must run the agent image entrypoint in agent mode on port 8080")
 	}
 	resources := obj(container["resources"])
-	requests, limits := obj(resources["requests"]), obj(resources["limits"])
+	requests := obj(resources["requests"])
 	if requests["cpu"].StringValue() != "10m" || requests["memory"].StringValue() != "32Mi" ||
-		limits["cpu"].StringValue() != "200m" || limits["memory"].StringValue() != "64Mi" {
+		resources.HasValue("limits") {
 		t.Errorf("agent resources = %v", resources)
 	}
 	security := obj(container["securityContext"])
