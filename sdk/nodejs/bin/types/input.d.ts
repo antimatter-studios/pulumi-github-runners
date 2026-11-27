@@ -1,0 +1,59 @@
+import * as pulumi from "@pulumi/pulumi";
+import * as inputs from "../types/input";
+export interface DeviceOfferArgs {
+    count?: pulumi.Input<number | undefined>;
+    name: pulumi.Input<string>;
+    paths: pulumi.Input<pulumi.Input<string>[]>;
+}
+export interface GitHubAppArgs {
+    appId: pulumi.Input<string>;
+    installationId: pulumi.Input<string>;
+    privateKey: pulumi.Input<string>;
+}
+export interface NetworkAllowArgs {
+    namespaceLabels?: pulumi.Input<{
+        [key: string]: pulumi.Input<string>;
+    } | undefined>;
+    podLabels?: pulumi.Input<{
+        [key: string]: pulumi.Input<string>;
+    } | undefined>;
+    ports?: pulumi.Input<pulumi.Input<number>[] | undefined>;
+}
+export interface PodResourcesArgs {
+    cpuLimit?: pulumi.Input<string | undefined>;
+    cpuRequest?: pulumi.Input<string | undefined>;
+    memoryLimit?: pulumi.Input<string | undefined>;
+    memoryRequest?: pulumi.Input<string | undefined>;
+}
+export interface PoolHookArgs {
+    /**
+     * Environment for the runner container, which the hook sees.
+     */
+    env?: pulumi.Input<{
+        [key: string]: pulumi.Input<string>;
+    } | undefined>;
+    /**
+     * Extra files beside the script in /etc/arc-hooks.
+     */
+    files?: pulumi.Input<{
+        [key: string]: pulumi.Input<string>;
+    } | undefined>;
+    /**
+     * Fail every job started by a pull request from a fork. Default true.
+     */
+    rejectForks?: pulumi.Input<boolean | undefined>;
+    /**
+     * A script run after the fork check; a non-zero exit fails the job.
+     */
+    script?: pulumi.Input<string | undefined>;
+}
+export interface PoolNetworkPolicyArgs {
+    allow?: pulumi.Input<pulumi.Input<inputs.NetworkAllowArgs>[] | undefined>;
+    blockPrivate?: pulumi.Input<boolean | undefined>;
+}
+export interface RunnerGroupArgs {
+    allowsPublicRepositories?: pulumi.Input<boolean | undefined>;
+    name: pulumi.Input<string>;
+    visibility?: pulumi.Input<string | undefined>;
+}
+//# sourceMappingURL=input.d.ts.map

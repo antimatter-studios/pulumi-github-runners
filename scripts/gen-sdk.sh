@@ -36,6 +36,8 @@ require("fs").writeFileSync(f, JSON.stringify(p, null, 4) + "\n");' "$root/sdk/n
   npm install --no-audit --no-fund --no-package-lock --silent >/dev/null
   npx --no-install tsc
   rm -rf node_modules
+  # the generator's own .gitignore excludes bin/, which is exactly what has to be committed
+  rm -f .gitignore
   # the compiled utilities read their version from ./package.json beside them
   node -e '
 const p = JSON.parse(require("fs").readFileSync("package.json", "utf8"));
