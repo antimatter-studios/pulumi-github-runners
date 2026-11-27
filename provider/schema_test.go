@@ -53,6 +53,20 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	if agent.Properties["claimUrl"].Type != "string" {
 		t.Error("GateAgent schema must expose a string claimUrl")
 	}
+	// The load-aware capacity options are opt-in: a stack that does not set them keeps working.
+	pool := spec.Resources["github-runners:index:Pool"]
+	for resource, inputs := range map[string][]string{"Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
+		r := spec.Resources["github-runners:index:"+resource]
+		for _, name := range inputs {
+			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
+				t.Errorf("%s schema must offer %s as an optional input", resource, name)
+			}
+		}
+	}
+	slots := spec.Types[strings.TrimPrefix(pool.InputProperties["slots"].Ref, "#/types/")]
+	if len(slots.Required) != 0 || slots.Properties["enabled"].Type != "boolean" || slots.Properties["resourceName"].Type != "string" {
+		t.Errorf("Pool slots type = %+v", slots)
+	}
 }
 
 // No component input may be called `id` or `urn`: Pulumi reserves both on every resource and strips

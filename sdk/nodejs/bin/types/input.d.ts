@@ -87,6 +87,16 @@ export interface PoolNetworkPolicyArgs {
      */
     gateAgentNamespace?: pulumi.Input<string | undefined>;
 }
+export interface PoolSlotsArgs {
+    /**
+     * Request one runner slot per runner pod. Default false. Only nodes where the GateAgent (manageSlots) has published slots can run the pool's pods; until then they stay Pending and their jobs wait at GitHub.
+     */
+    enabled?: pulumi.Input<boolean | undefined>;
+    /**
+     * The extended resource that counts a node's runner slots. Default runners.antimatter.studios/slot.
+     */
+    resourceName?: pulumi.Input<string | undefined>;
+}
 export interface PrePullArgs {
     /**
      * Images kept on every node, each of which must have `true` on its PATH. Default: the default runner and podman images. List a pool's own image here if it sets one.

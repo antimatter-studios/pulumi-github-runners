@@ -71,6 +71,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["priorityClassName"] = args?.priorityClassName;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
+            resourceInputs["slots"] = args?.slots;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
             resourceInputs["token"] = args?.token ? pulumi.secret(args.token) : undefined;
             resourceInputs["topologySpread"] = args?.topologySpread;
@@ -167,6 +168,10 @@ export interface PoolArgs {
      * The runs-on label: <machine>-<os>-<arch>, e.g. ryzen-linux-x64.
      */
     scaleSetName: string;
+    /**
+     * Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.
+     */
+    slots?: pulumi.Input<inputs.PoolSlotsArgs | undefined>;
     /**
      * Groups the runner pod's processes join.
      */

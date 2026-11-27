@@ -48,6 +48,20 @@ egress is not restricted. Both policies need a network plugin that enforces Netw
 A pool with a `networkPolicy` always lets its runners reach the agent in `arc-systems` on port 8080.
 Set `networkPolicy.gateAgentNamespace` when the agent runs elsewhere.
 
+### Runner slots (load-aware capacity, #22)
+
+`Pool.slots: {enabled: true}` makes each runner pod's runner container request and limit one
+`runners.antimatter.studios/slot`, an extended resource that each node advertises from its measured
+load. The scheduler places a runner pod only on a node with a free slot; a pod with none stays
+Pending and its job waits at GitHub. Lowering a node's count never evicts a running pod, it only
+stops new placements.
+
+The runner-gate agent publishes the count on each node, which needs `GateAgent.manageSlots: true`
+(RBAC: `patch` on `nodes/status`, nothing more). The plugin does not seed the count: a node without
+the agent advertises no slots, so a pool with slots enabled never lands there by accident. Enable
+the agent, let it publish, then enable `slots` on the pools that should follow it. Both are off by
+default.
+
 ### Pool credentials
 
 Set exactly one of `app` or `token` on each pool. The recommended credential is a GitHub App

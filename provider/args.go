@@ -18,6 +18,10 @@ type GateAgentArgs struct {
 	ImagePull         GateAgentImagePull `pulumi:"imagePull"`
 
 	NetworkPolicy *GateAgentNetworkPolicy `pulumi:"networkPolicy,optional"`
+
+	// ManageSlots lets the agent publish each node's runner slots (see PoolSlots). Off by default:
+	// the agent starts in dry-run, and the write permission is granted only when it is asked for.
+	ManageSlots *bool `pulumi:"manageSlots,optional"`
 }
 
 // GateAgentNetworkPolicy guards the agent's port: runner namespaces, plus the sources listed here.
@@ -49,6 +53,7 @@ func (a *GateAgentArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.RunnerNamespaces, "Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.")
 	an.Describe(&a.Interval, "How often to push a pool snapshot, e.g. 10s. Defaults to the agent's interval.")
 	an.Describe(&a.ImagePull, "Registry credentials for the agent image's pull Secret.")
+	an.Describe(&a.ManageSlots, "Let the agent patch nodes/status, so it can publish each node's runner slots (the extended resource "+defaultSlotResource+") for pools with slots enabled. Default false; nothing broader than nodes/status patch is granted.")
 	an.Describe(&a.NetworkPolicy, "Who may reach the agent's port 8080. By default only pods in namespaces labelled "+poolNamespaceLabel+", which every Pool's namespace is.")
 }
 
@@ -108,6 +113,16 @@ type PoolArgs struct {
 	Env           map[string]string  `pulumi:"env,optional"`
 	Hook          *PoolHook          `pulumi:"hook,optional"`
 	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
+	Slots         *PoolSlots         `pulumi:"slots,optional"`
+}
+
+// PoolSlots makes each runner pod take one of its node's runner slots, an extended resource the
+// GateAgent publishes per node from the node's measured load (#24). The scheduler then places a
+// runner only where there is room, and a pod with no slot stays Pending while its job waits at
+// GitHub, where waiting costs nothing.
+type PoolSlots struct {
+	Enabled      *bool   `pulumi:"enabled,optional"`
+	ResourceName *string `pulumi:"resourceName,optional"`
 }
 
 // GitHubApp is the recommended credential for a pool.
@@ -176,6 +191,12 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Env, "Every job's default environment, which a job can override, e.g. {GOMAXPROCS: \"2\", CARGO_BUILD_JOBS: \"2\", FLTH_RESOURCE_PROFILE: \"low\"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.")
 	an.Describe(&a.Hook, "What runs before every job's first step.")
 	an.Describe(&a.NetworkPolicy, "Keep runner pods off private addresses.")
+	an.Describe(&a.Slots, "Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.")
+}
+
+func (s *PoolSlots) Annotate(an infer.Annotator) {
+	an.Describe(&s.Enabled, "Request one runner slot per runner pod. Default false. Only nodes where the GateAgent (manageSlots) has published slots can run the pool's pods; until then they stay Pending and their jobs wait at GitHub.")
+	an.Describe(&s.ResourceName, "The extended resource that counts a node's runner slots. Default "+defaultSlotResource+".")
 }
 
 func (p *PoolNetworkPolicy) Annotate(an infer.Annotator) {

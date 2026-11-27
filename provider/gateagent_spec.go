@@ -268,13 +268,24 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace string) []gateAgen
 	return pairs
 }
 
-func gateAgentClusterRole(namespace string) (*rbacv1.ClusterRoleArgs, *rbacv1.ClusterRoleBindingArgs) {
+func gateAgentClusterRole(a GateAgentArgs, namespace string) (*rbacv1.ClusterRoleArgs, *rbacv1.ClusterRoleBindingArgs) {
+	rules := rbacv1.PolicyRuleArray{
+		gateAgentListRule("", "nodes"),
+		gateAgentListRule("metrics.k8s.io", "nodes"),
+	}
+	if a.ManageSlots != nil && *a.ManageSlots {
+		// The node's status, where its slot capacity is published, and nothing else of the node:
+		// not its spec, labels or taints. RBAC cannot narrow this to the one capacity key, so the
+		// agent's own code keeps to it.
+		rules = append(rules, &rbacv1.PolicyRuleArgs{
+			ApiGroups: pulumi.ToStringArray([]string{""}),
+			Resources: pulumi.ToStringArray([]string{"nodes/status"}),
+			Verbs:     pulumi.ToStringArray([]string{"patch"}),
+		})
+	}
 	return &rbacv1.ClusterRoleArgs{
 		Metadata: gateAgentMetadata(gateAgentName, ""),
-		Rules: rbacv1.PolicyRuleArray{
-			gateAgentListRule("", "nodes"),
-			gateAgentListRule("metrics.k8s.io", "nodes"),
-		},
+		Rules:    rules,
 	}, &rbacv1.ClusterRoleBindingArgs{
 		Metadata: gateAgentMetadata(gateAgentName, ""),
 		RoleRef:  gateAgentRoleRef("ClusterRole", gateAgentName),
