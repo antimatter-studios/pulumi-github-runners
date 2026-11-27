@@ -36,6 +36,7 @@ type PoolArgs struct {
 	PodResources            *PodResources `pulumi:"podResources,optional"`
 
 	TopologySpread     *bool             `pulumi:"topologySpread,optional"`
+	PriorityClassName  *string           `pulumi:"priorityClassName,optional"`
 	Devices            map[string]string `pulumi:"devices,optional"`
 	SupplementalGroups []int             `pulumi:"supplementalGroups,optional"`
 
@@ -104,6 +105,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
 	an.Describe(&a.DockerMemoryLimit, "The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
 	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.")
+	an.Describe(&a.PriorityClassName, "The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.")
 	an.Describe(&a.TopologySpread, "Spread the pool's runners evenly across nodes, hard. For multi-node clusters.")
 	an.Describe(&a.Devices, "Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {\"devic.es/fuse\": \"1\"}.")
 	an.Describe(&a.SupplementalGroups, "Groups the runner pod's processes join.")

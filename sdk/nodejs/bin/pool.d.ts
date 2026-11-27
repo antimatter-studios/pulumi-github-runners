@@ -91,6 +91,10 @@ export interface PoolArgs {
      */
     poolId: string;
     /**
+     * The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.
+     */
+    priorityClassName?: string;
+    /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */
     runnerGroup?: pulumi.Input<inputs.RunnerGroupArgs | undefined>;

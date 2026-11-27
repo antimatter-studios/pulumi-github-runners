@@ -476,3 +476,14 @@ func TestPoolEnvIsEveryJobsDefault(t *testing.T) {
 		t.Fatalf("a pool overrode DOCKER_HOST: %v", e["DOCKER_HOST"])
 	}
 }
+
+func TestPriorityClassIsOptional(t *testing.T) {
+	if has(t, podTemplate(basePool()), "spec", "priorityClassName") {
+		t.Fatal("no priority class unless asked")
+	}
+	a := basePool()
+	a.PriorityClassName = sp("ci-runner")
+	if get(t, podTemplate(a), "spec", "priorityClassName") != "ci-runner" {
+		t.Fatal("priorityClassName not applied")
+	}
+}

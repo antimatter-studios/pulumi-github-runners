@@ -67,6 +67,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
             resourceInputs["poolId"] = args?.poolId;
+            resourceInputs["priorityClassName"] = args?.priorityClassName;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
@@ -149,6 +150,10 @@ export interface PoolArgs {
      * A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.
      */
     poolId: string;
+    /**
+     * The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.
+     */
+    priorityClassName?: string;
     /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */

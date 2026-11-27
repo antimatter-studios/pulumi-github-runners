@@ -340,6 +340,9 @@ func podTemplate(a PoolArgs) map[string]any {
 			spec["resources"] = res
 		}
 	}
+	if a.PriorityClassName != nil && *a.PriorityClassName != "" {
+		spec["priorityClassName"] = *a.PriorityClassName
+	}
 	if len(a.SupplementalGroups) > 0 {
 		groups := make([]any, len(a.SupplementalGroups))
 		for i, g := range a.SupplementalGroups {
