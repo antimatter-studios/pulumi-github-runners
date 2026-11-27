@@ -33,6 +33,9 @@
   "copying input ...: expected destination type to implement pulumi.Input or pulumi.Output".
 - Every other input is plain in the schema, so the SDK types it as a plain value and a program's type
   check refuses an Output there, instead of the deployment failing.
+- CI's `integration` job deploys every component to a kind cluster with `pulumi up`, checks the
+  result with kubectl (controller, scale set, runner pod template, network policies, agent RBAC),
+  and checks that `pulumi destroy` leaves nothing behind. `tests/integration/run.sh` runs it locally.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent

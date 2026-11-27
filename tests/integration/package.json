@@ -1,0 +1,6 @@
+{
+  "name": "github-runners-integration",
+  "private": true,
+  "description": "The integration test's Pulumi program. It loads the committed SDK by path, and @pulumi/pulumi from the repository root's node_modules (pnpm install --frozen-lockfile there).",
+  "main": "index.js"
+}
