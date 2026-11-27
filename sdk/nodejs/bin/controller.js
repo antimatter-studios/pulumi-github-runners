@@ -61,6 +61,8 @@ class Controller extends pulumi.ComponentResource {
             resourceInputs["listenerMetrics"] = args?.listenerMetrics;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["prePull"] = args?.prePull;
+            resourceInputs["priorityClassName"] = args?.priorityClassName;
+            resourceInputs["resources"] = args?.resources;
             resourceInputs["version"] = args?.version;
         }
         else {

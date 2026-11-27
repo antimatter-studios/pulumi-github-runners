@@ -43,6 +43,8 @@ export class Controller extends pulumi.ComponentResource {
             resourceInputs["listenerMetrics"] = args?.listenerMetrics;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["prePull"] = args?.prePull;
+            resourceInputs["priorityClassName"] = args?.priorityClassName;
+            resourceInputs["resources"] = args?.resources;
             resourceInputs["version"] = args?.version;
         } else {
             resourceInputs["namespace"] = undefined /*out*/;
@@ -77,6 +79,14 @@ export interface ControllerArgs {
      * Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.
      */
     prePull?: pulumi.Input<inputs.PrePullArgs | undefined>;
+    /**
+     * The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.
+     */
+    priorityClassName?: string;
+    /**
+     * The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.
+     */
+    resources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
     /**
      * The ARC chart version. Default 0.15.1.
      */

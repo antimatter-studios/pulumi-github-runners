@@ -60,6 +60,8 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
             resourceInputs["hook"] = args?.hook;
             resourceInputs["image"] = args?.image;
+            resourceInputs["listenerPriorityClassName"] = args?.listenerPriorityClassName;
+            resourceInputs["listenerResources"] = args?.listenerResources;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
             resourceInputs["memoryRequest"] = args?.memoryRequest;
@@ -130,6 +132,14 @@ export interface PoolArgs {
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
     image?: string;
+    /**
+     * The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.
+     */
+    listenerPriorityClassName?: string;
+    /**
+     * The listener container's requests and limits. Default: none.
+     */
+    listenerResources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
     /**
      * Jobs at once. Default 2.
      */

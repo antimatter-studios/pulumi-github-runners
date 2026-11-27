@@ -5,6 +5,10 @@
 - `Controller.createNamespace`: set `false` to install into a namespace that already exists, which
   pulumi-kubernetes refuses to create. Default `true`. Setting it on a Controller that created its
   namespace deletes that namespace and everything in it.
+- `Controller.priorityClassName` and `Controller.resources` for the controller manager pod, and
+  `Pool.listenerPriorityClassName` and `Pool.listenerResources` for a pool's listener pod, so runners
+  cannot starve them. All unset by default. `Controller.resources` replaces the controller's default
+  requests and limits whole.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent

@@ -15,6 +15,7 @@ The design, its rules and the order of work are in the tracking issue,
 | `Controller` (component) | ARC's controller for one cluster, as a Helm release, with listener metrics and optional device plugins offering host devices as `devic.es/<name>`. |
 | `Controller.createNamespace` | Default `true`. `false` installs into an existing `namespace` (it must exist) and creates no Namespace resource. Setting it on a Controller that created its namespace deletes that namespace and everything in it. |
 | `Controller.prePull` | Optional DaemonSet that keeps runner images on every node, so a pod scaled from zero does not wait for its pulls. `{}` pre-pulls the default runner and podman images; list a pool's own `image` in `images` if it sets one. Each image runs `true` once as an unprivileged init container, then the pod idles on `pause` with tiny requests and a 32Mi memory limit. `priorityClassName` is optional. |
+| `Controller.priorityClassName`, `Controller.resources` | The controller manager pod's PriorityClass and its requests and limits. See [Priority and resources](#priority-and-resources-of-arcs-own-pods). |
 | `Pool` (component) | One organisation's runners on one machine, named `<machine>-<os>-<arch>`: credentials, runner group, scale set, the rootless podman sidecar, the job-started hook and an optional NetworkPolicy. |
 | `ForkPrApproval` | An organisation's "Approval for running fork pull request workflows from contributors" setting. Deleting the resource leaves the setting as it is, so removing it never loosens an organisation. |
 
@@ -48,6 +49,31 @@ egress is not restricted. Both policies need a network plugin that enforces Netw
 
 A pool with a `networkPolicy` always lets its runners reach the agent in `arc-systems` on port 8080.
 Set `networkPolicy.gateAgentNamespace` when the agent runs elsewhere.
+
+### Priority and resources of ARC's own pods
+
+Runners can starve the controller and the listeners that hand them jobs. Give both a high
+PriorityClass, which must already exist, and measured requests:
+
+```ts
+new Controller("arc", {
+    priorityClassName: "infra-critical",
+    resources: { cpuRequest: "50m", memoryRequest: "128Mi" },
+});
+
+new Pool("acme", {
+    // ...
+    listenerPriorityClassName: "infra-critical",
+    listenerResources: { cpuRequest: "10m", memoryRequest: "64Mi" },
+});
+```
+
+Both resource blocks also take `cpuLimit` and `memoryLimit`. By default the controller requests 100m
+CPU and 128Mi with limits of 500m and 512Mi; `resources` replaces that block whole, so a limit left
+out is no limit. Listeners have no PriorityClass, requests or limits by default.
+
+The listener settings are per pool because ARC's controller chart has none for listeners: only a
+scale set's `listenerTemplate` reaches a listener pod.
 
 ### Runner slots (load-aware capacity, #22)
 

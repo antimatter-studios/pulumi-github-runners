@@ -248,6 +248,59 @@ func TestControllerCreatesItsNamespaceUnlessToldNotTo(t *testing.T) {
 	}
 }
 
+func TestControllerAndPoolPassPriorityAndResourcesToTheirCharts(t *testing.T) {
+	m := &mocks{}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		if _, err := NewController(ctx, "arc", ControllerArgs{
+			PriorityClassName: sp("infra-critical"),
+			Resources:         &ContainerResources{MemoryRequest: sp("96Mi")},
+		}); err != nil {
+			return err
+		}
+		a := basePool()
+		a.Token = stringInput("t")
+		a.ListenerPriorityClassName = sp("infra-critical")
+		a.ListenerResources = &ContainerResources{MemoryRequest: sp("64Mi")}
+		_, err := NewPool(ctx, "acme", a)
+		return err
+	}, pulumi.WithMocks("project", "stack", m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := obj(m.find(t, "kubernetes:helm.sh/v3:Release", "-controller").inputs["values"])
+	if controller["priorityClassName"].StringValue() != "infra-critical" || obj(obj(controller["resources"])["requests"])["memory"].StringValue() != "96Mi" {
+		t.Errorf("controller values %v", controller)
+	}
+	set := obj(m.find(t, "kubernetes:helm.sh/v3:Release", "-scale-set").inputs["values"])
+	listener := allStrings(set["listenerTemplate"])
+	if !strings.Contains(listener, "infra-critical") || !strings.Contains(listener, "64Mi") {
+		t.Errorf("listener template %q", listener)
+	}
+}
+
+// An empty resources block would silently remove the controller's default requests and limits.
+func TestEmptyResourcesCreateNothing(t *testing.T) {
+	pool := basePool()
+	pool.Token = stringInput("t")
+	pool.ListenerResources = &ContainerResources{CPURequest: sp("")}
+	for want, build := range map[string]func(*pulumi.Context) error{
+		"resources": func(ctx *pulumi.Context) error {
+			_, err := NewController(ctx, "arc", ControllerArgs{Resources: &ContainerResources{}})
+			return err
+		},
+		"listenerResources": func(ctx *pulumi.Context) error {
+			_, err := NewPool(ctx, "acme", pool)
+			return err
+		},
+	} {
+		m := &mocks{}
+		err := pulumi.RunErr(build, pulumi.WithMocks("project", "stack", m))
+		if err == nil || !strings.Contains(err.Error(), want+" sets no request or limit") || len(m.all) != 0 {
+			t.Errorf("%s: err %v, %d resources", want, err, len(m.all))
+		}
+	}
+}
+
 // checkControllerNamespace: how many Namespaces were created, and that the release and every
 // DaemonSet target the namespace.
 func checkControllerNamespace(t *testing.T, m *mocks, namespace string, created int) {

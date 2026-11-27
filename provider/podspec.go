@@ -400,7 +400,34 @@ func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[strin
 	if runnerGroup != "" {
 		v["runnerGroup"] = runnerGroup
 	}
+	if t := listenerTemplate(a); t != nil {
+		v["listenerTemplate"] = t
+	}
 	return v
+}
+
+// listenerTemplate is what the pool's listener pod adds to ARC's own, or nil to leave it alone.
+func listenerTemplate(a PoolArgs) map[string]any {
+	class := orDefault(a.ListenerPriorityClassName, "")
+	if class == "" && a.ListenerResources == nil {
+		return nil
+	}
+	// ARC merges this container into its own by name. The CRD requires the list, even with nothing
+	// to add to the container.
+	listener := map[string]any{"name": "listener"}
+	if a.ListenerResources != nil {
+		listener["resources"] = a.ListenerResources.values()
+	}
+	spec := map[string]any{
+		"containers": []any{listener},
+		// ARC copies this from the template even when unset, which would drop the listener's own 60 s
+		// to Kubernetes' 30 s.
+		"terminationGracePeriodSeconds": 60,
+	}
+	if class != "" {
+		spec["priorityClassName"] = class
+	}
+	return map[string]any{"spec": spec}
 }
 
 func intOr(v *int, d int) int {
@@ -445,6 +472,9 @@ func checkPool(a PoolArgs) error {
 		if _, err := hookFiles(*a.Hook); err != nil {
 			return fmt.Errorf("pool %s: %w", a.ID, err)
 		}
+	}
+	if a.ListenerResources != nil && len(a.ListenerResources.values()) == 0 {
+		return fmt.Errorf("pool %s: listenerResources sets no request or limit; leave it out for none", a.ID)
 	}
 	if slot := slotResource(a); slot != "" {
 		// kubernetes.io names are the cluster's own resources (cpu, memory); a slot there would
