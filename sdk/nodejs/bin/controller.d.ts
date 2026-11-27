@@ -37,6 +37,10 @@ export interface ControllerArgs {
      */
     namespace?: string;
     /**
+     * Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.
+     */
+    prePull?: pulumi.Input<inputs.PrePullArgs | undefined>;
+    /**
      * The ARC chart version. Default 0.15.1.
      */
     version?: string;

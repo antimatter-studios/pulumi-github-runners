@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Controller.prePull`: an optional DaemonSet that keeps the runner and podman images (or the
+  listed `images`) on every node, so pools scaling from zero skip the image pull.
 - `Pool.env`: every job's default environment, e.g. parallelism hints (GOMAXPROCS, CARGO_BUILD_JOBS,
   FLTH_RESOURCE_PROFILE) so jobs without CPU limits stop sizing themselves to the whole node.
 - Runner pods have no CPU or memory limit unless a pool sets one; the memory limits that defaulted

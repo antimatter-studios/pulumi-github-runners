@@ -32,6 +32,7 @@ type ControllerArgs struct {
 	ListenerMetrics   *bool         `pulumi:"listenerMetrics,optional"`
 	Devices           []DeviceOffer `pulumi:"devices,optional"`
 	DevicePluginImage *string       `pulumi:"devicePluginImage,optional"`
+	PrePull           *PrePull      `pulumi:"prePull,optional"`
 }
 
 // DeviceOffer is a host device offered to pods as the resource devic.es/<name>.
@@ -46,6 +47,7 @@ func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Version, "The ARC chart version. Default "+DefaultARCVersion+".")
 	an.Describe(&a.ListenerMetrics, "Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.")
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
+	an.Describe(&a.PrePull, "Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.")
 }
 
 // Controller is ARC's controller, and the device plugins runner pods take devices from.
@@ -85,6 +87,11 @@ func devicePluginArgs(d DeviceOffer) (string, error) {
 
 // NewController builds the Controller component.
 func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...pulumi.ResourceOption) (*Controller, error) {
+	if a.PrePull != nil {
+		if _, err := prePullPlan(*a.PrePull); err != nil {
+			return nil, err
+		}
+	}
 	c := &Controller{}
 	if err := ctx.RegisterComponentResource("github-runners:index:Controller", name, c, opts...); err != nil {
 		return nil, err
@@ -150,6 +157,11 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 			},
 		}, child, pulumi.DependsOn([]pulumi.Resource{ns}))
 		if err != nil {
+			return nil, err
+		}
+	}
+	if a.PrePull != nil {
+		if _, err := newPrePull(ctx, name, namespace, *a.PrePull, child, pulumi.DependsOn([]pulumi.Resource{ns})); err != nil {
 			return nil, err
 		}
 	}

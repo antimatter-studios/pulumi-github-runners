@@ -51,6 +51,16 @@ export interface PoolNetworkPolicyArgs {
     allow?: pulumi.Input<pulumi.Input<inputs.NetworkAllowArgs>[] | undefined>;
     blockPrivate?: pulumi.Input<boolean | undefined>;
 }
+export interface PrePullArgs {
+    /**
+     * Images kept on every node, each of which must have `true` on its PATH. Default: the default runner and podman images. List a pool's own image here if it sets one.
+     */
+    images?: pulumi.Input<pulumi.Input<string>[] | undefined>;
+    /**
+     * The pre-pull pods' PriorityClass, e.g. a low one so they are evicted first. Default: none. The class must exist.
+     */
+    priorityClassName?: pulumi.Input<string | undefined>;
+}
 export interface RunnerGroupArgs {
     allowsPublicRepositories?: pulumi.Input<boolean | undefined>;
     name: pulumi.Input<string>;
