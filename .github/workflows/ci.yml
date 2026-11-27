@@ -57,3 +57,19 @@ jobs:
             echo "sdk/nodejs is stale: run scripts/gen-sdk.sh and commit the result" >&2
             exit 1
           fi
+
+  ci:
+    # The release workflow (pulumi-homelab's release.yml) releases a commit only when a check named
+    # "CI" passed on it. This job is that check; add every new job to its needs.
+    name: CI
+    needs: [go, sdk]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Result
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "a required job did not pass: $RESULTS" >&2; exit 1; }
+          done
