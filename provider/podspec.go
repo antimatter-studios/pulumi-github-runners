@@ -13,8 +13,9 @@ import (
 // DefaultRunnerImage is GitHub's runner with the OS tools of GitHub's ubuntu-24.04 image baked in,
 // built in github.com/antimatter-studios/actions-runner-image and pinned by digest. Pods used to
 // apt-get those tools at start: 42-87 s a job, and on 2026-11-19 one apt-get update hung for 8h45m
-// and its runner never registered.
-const DefaultRunnerImage = "ghcr.io/antimatter-studios/actions-runner:2.338.2-c01744f@sha256:af60b418707b4407c31c50b230d68d028afbee121746b55dce555d3a089b0277"
+// and its runner never registered. 31c1bb8 (actions-runner-image#7) also drops packages.microsoft.com
+// as an apt source, whose 403s failed jobs on 2026-11-27 (antimatter-vps #203).
+const DefaultRunnerImage = "ghcr.io/antimatter-studios/actions-runner:2.338.2-31c1bb8@sha256:5500713dffc79e980dbba54f9bd4b91f4f6d911caa163db49fcc70291773bd5f"
 
 // DefaultPodmanImage is the Docker-compatible API for jobs, as a sidecar.
 const DefaultPodmanImage = "quay.io/podman/stable:v6.1.3@sha256:1d280cfab8e4cdaa221229c121f681c67463fbd82ad2fa6d13fdcf91c6fc747e"
