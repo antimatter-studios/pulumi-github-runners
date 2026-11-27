@@ -122,8 +122,14 @@ func TestTheRunnerImageIsPinnedByDigestAndOverridable(t *testing.T) {
 	if c := container(t, podTemplate(a), "runner"); c["image"] != "example/runner@sha256:abc" {
 		t.Fatalf("image %v", c["image"])
 	}
-	if _, ok := container(t, podTemplate(basePool()), "runner")["command"]; ok {
-		t.Fatal("the image starts run.sh itself; a command would replace it")
+}
+
+var wantRunnerCommand = []any{"sh", "-c", "for i in $(seq 1 120); do [ -S /run/docker/docker.sock ] && break; sleep 0.5; done; exec /home/runner/run.sh"}
+
+func TestRunnerWaitsForPodmanSocketBeforeStarting(t *testing.T) {
+	cmd := container(t, podTemplate(basePool()), "runner")["command"]
+	if !reflect.DeepEqual(cmd, wantRunnerCommand) {
+		t.Fatalf("runner command %v, want %v", cmd, wantRunnerCommand)
 	}
 }
 
@@ -237,11 +243,39 @@ func TestPodResourcesAreOneSharedBudget(t *testing.T) {
 	}
 	a := basePool()
 	a.PodResources = &PodResources{CPULimit: sp("4"), MemoryLimit: sp("2Gi"), CPURequest: sp("500m"), MemoryRequest: sp("512Mi")}
-	got := get(t, podTemplate(a), "spec", "resources")
+	a.CPULimit = sp("8")
+	a.Devices = map[string]string{"devic.es/kvm": "1"}
+	tpl := podTemplate(a)
+	got := get(t, tpl, "spec", "resources")
 	want := map[string]any{"limits": map[string]any{"cpu": "4", "memory": "2Gi"}, "requests": map[string]any{"cpu": "500m", "memory": "512Mi"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
+	for name, limits := range map[string]map[string]any{
+		"runner": {"ephemeral-storage": "10Gi", "devic.es/kvm": "1"},
+		"docker": {"ephemeral-storage": "20Gi", "devic.es/kvm": "1"},
+	} {
+		if got := get(t, container(t, tpl, name), "resources", "limits"); !reflect.DeepEqual(got, limits) {
+			t.Errorf("%s limits: got %v, want %v", name, got, limits)
+		}
+	}
+	t.Run("CPU limit only", func(t *testing.T) {
+		a.PodResources = &PodResources{CPULimit: sp("4"), MemoryRequest: sp("512Mi")}
+		tpl := podTemplate(a)
+		for _, name := range []string{"runner", "docker"} {
+			limits := get(t, container(t, tpl, name), "resources", "limits").(map[string]any)
+			if limits["memory"] != "4Gi" || limits["cpu"] != nil {
+				t.Errorf("%s limits: got %v, want the container memory limit only", name, limits)
+			}
+		}
+	})
+	t.Run("memory limit only", func(t *testing.T) {
+		a.PodResources = &PodResources{MemoryLimit: sp("2Gi"), CPURequest: sp("500m")}
+		limits := get(t, container(t, podTemplate(a), "runner"), "resources", "limits").(map[string]any)
+		if limits["cpu"] != "8" || limits["memory"] != nil {
+			t.Errorf("runner limits: got %v, want the container CPU limit only", limits)
+		}
+	})
 }
 
 func TestTopologySpreadIsHardAndOptional(t *testing.T) {
@@ -260,9 +294,12 @@ func TestDevicesComeFromDevicePluginsNotHostPaths(t *testing.T) {
 	a := basePool()
 	a.Devices = map[string]string{"devic.es/fuse": "1", "devic.es/kvm": "1"}
 	tpl := podTemplate(a)
-	lim := container(t, tpl, "runner")["resources"].(map[string]any)["limits"].(map[string]any)
-	if lim["devic.es/fuse"] != "1" || lim["devic.es/kvm"] != "1" {
-		t.Fatalf("limits %v", lim)
+	for _, name := range []string{"runner", "docker"} {
+		// The sidecar needs them too: containers a job starts with `docker run --device` run there.
+		lim := container(t, tpl, name)["resources"].(map[string]any)["limits"].(map[string]any)
+		if lim["devic.es/fuse"] != "1" || lim["devic.es/kvm"] != "1" {
+			t.Fatalf("%s limits %v", name, lim)
+		}
 	}
 	raw, _ := json.Marshal(tpl)
 	if strings.Contains(string(raw), "hostPath") {
@@ -313,21 +350,34 @@ func TestHookFiles(t *testing.T) {
 
 func TestCheckPool(t *testing.T) {
 	ok := basePool()
-	ok.Token = stringInput("t")
+	ok.App = &GitHubApp{AppID: "1", InstallationID: "2", PrivateKey: stringInput("k")}
 	if err := checkPool(ok); err != nil {
 		t.Fatal(err)
 	}
+	for name, credential := range map[string]PoolArgs{
+		"App": ok,
+		"PAT": {ID: ok.ID, ConfigURL: ok.ConfigURL, ScaleSetName: ok.ScaleSetName, Token: stringInput("t")},
+	} {
+		credential.RunnerGroup = &RunnerGroup{Name: "ryzen"}
+		if err := checkPool(credential); err != nil {
+			t.Errorf("runner group with %s: %v", name, err)
+		}
+	}
 	cases := map[string]func(*PoolArgs){
-		"no credential":          func(a *PoolArgs) { a.Token = nil },
-		"both credentials":       func(a *PoolArgs) { a.App = &GitHubApp{AppID: "1", InstallationID: "2", PrivateKey: stringInput("k")} },
+		"no credential":          func(a *PoolArgs) { a.App = nil },
+		"both credentials":       func(a *PoolArgs) { a.Token = stringInput("t") },
 		"bad id":                 func(a *PoolArgs) { a.ID = "Acme_Runners" },
 		"bad url":                func(a *PoolArgs) { a.ConfigURL = "https://gitlab.com/acme" },
 		"label without machine":  func(a *PoolArgs) { a.ScaleSetName = "linux-x64" },
 		"antimatter-style label": func(a *PoolArgs) { a.ScaleSetName = "ryzen-linux-x64-kvm" },
 		"max below min":          func(a *PoolArgs) { a.MinRunners, a.MaxRunners = ip(3), ip(2) },
-		"group without admin":    func(a *PoolArgs) { a.RunnerGroup = &RunnerGroup{Name: "ryzen"} },
-		"fork policy w/o admin":  func(a *PoolArgs) { a.ForkPrApproval = sp("all_external_contributors") },
-		"reserved hook file":     func(a *PoolArgs) { a.Hook = &PoolHook{Files: map[string]string{"custom.sh": ""}} },
+		"group without a credential": func(a *PoolArgs) {
+			a.App, a.RunnerGroup = nil, &RunnerGroup{Name: "ryzen"}
+		},
+		"group with a repository URL": func(a *PoolArgs) {
+			a.ConfigURL, a.RunnerGroup = "https://github.com/acme/repo", &RunnerGroup{Name: "ryzen"}
+		},
+		"reserved hook file": func(a *PoolArgs) { a.Hook = &PoolHook{Files: map[string]string{"custom.sh": ""}} },
 	}
 	for name, mutate := range cases {
 		a := ok

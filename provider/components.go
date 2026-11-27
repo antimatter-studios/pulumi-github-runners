@@ -2,7 +2,6 @@ package githubrunners
 
 import (
 	"encoding/json"
-	"fmt"
 
 	github "github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi-go-provider/infer"
@@ -175,11 +174,6 @@ func (p *Pool) Annotate(an infer.Annotator) {
 	an.SetToken("index", "Pool")
 }
 
-// forkPrApprovalResource registers this package's own ForkPrApproval from inside a component.
-type forkPrApprovalResource struct {
-	pulumi.CustomResourceState
-}
-
 // NewPool builds the Pool component.
 func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.ResourceOption) (*Pool, error) {
 	if err := checkPool(a); err != nil {
@@ -199,15 +193,15 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	}
 	inNS := pulumi.DependsOn([]pulumi.Resource{ns})
 
-	// ARC's credential. The admin token is never written here: it stays in Pulumi.
+	// ARC reads the pool's credential from this secret.
 	secretName := "arc-github"
 	data := pulumi.StringMap{}
-	if a.Token != nil {
-		data["github_token"] = pulumi.ToSecret(a.Token).(pulumi.StringOutput)
-	} else {
+	if a.App != nil {
 		data["github_app_id"] = pulumi.String(a.App.AppID)
 		data["github_app_installation_id"] = pulumi.String(a.App.InstallationID)
 		data["github_app_private_key"] = pulumi.ToSecret(a.App.PrivateKey).(pulumi.StringOutput)
+	} else {
+		data["github_token"] = pulumi.ToSecret(a.Token).(pulumi.StringOutput)
 	}
 	secret, err := corev1.NewSecret(ctx, name+"-github", &corev1.SecretArgs{
 		Metadata:   &metav1.ObjectMetaArgs{Name: pulumi.String(secretName), Namespace: pulumi.String(namespace)},
@@ -257,42 +251,33 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		deps = append(deps, policy)
 	}
 
-	org := orgOf(a.ConfigURL)
 	runnerGroup := ""
-	if a.RunnerGroup != nil || a.ForkPrApproval != nil {
-		if org == "" {
-			return nil, fmt.Errorf("pool %s: a runner group and forkPrApproval need an organisation configUrl", a.ID)
+	if g := a.RunnerGroup; g != nil {
+		providerArgs := &github.ProviderArgs{Owner: pulumi.String(orgOf(a.ConfigURL))}
+		if a.App != nil {
+			providerArgs.AppAuth = github.ProviderAppAuthArgs{
+				Id:             pulumi.String(a.App.AppID),
+				InstallationId: pulumi.String(a.App.InstallationID),
+				PemFile:        data["github_app_private_key"],
+			}
+		} else {
+			providerArgs.Token = data["github_token"].ToStringOutput().ToStringPtrOutput()
 		}
-		admin, err := github.NewProvider(ctx, name+"-github-admin", &github.ProviderArgs{
-			Owner: pulumi.String(org),
-			Token: pulumi.ToSecret(a.AdminToken).(pulumi.StringOutput),
-		}, child)
+		// Keep the provider's logical name so existing runner groups retain their provider reference.
+		gh, err := github.NewProvider(ctx, name+"-github-admin", providerArgs, child)
 		if err != nil {
 			return nil, err
 		}
-		if g := a.RunnerGroup; g != nil {
-			group, err := github.NewActionsRunnerGroup(ctx, name+"-group", &github.ActionsRunnerGroupArgs{
-				Name:                     pulumi.String(g.Name),
-				Visibility:               pulumi.String(orDefault(g.Visibility, "all")),
-				AllowsPublicRepositories: pulumi.BoolPtrFromPtr(g.AllowsPublicRepositories),
-			}, child, pulumi.Provider(admin))
-			if err != nil {
-				return nil, err
-			}
-			runnerGroup = g.Name
-			deps = append(deps, group)
+		group, err := github.NewActionsRunnerGroup(ctx, name+"-group", &github.ActionsRunnerGroupArgs{
+			Name:                     pulumi.String(g.Name),
+			Visibility:               pulumi.String(orDefault(g.Visibility, "all")),
+			AllowsPublicRepositories: pulumi.BoolPtrFromPtr(g.AllowsPublicRepositories),
+		}, child, pulumi.Provider(gh))
+		if err != nil {
+			return nil, err
 		}
-		if p := a.ForkPrApproval; p != nil {
-			var fork forkPrApprovalResource
-			err := ctx.RegisterResource("github-runners:index:ForkPrApproval", name+"-fork-pr-approval", pulumi.Map{
-				"org":    pulumi.String(org),
-				"policy": pulumi.String(*p),
-				"token":  pulumi.ToSecret(a.AdminToken),
-			}, &fork, child, pulumi.Version(Version), pulumi.PluginDownloadURL(PluginDownloadURL))
-			if err != nil {
-				return nil, err
-			}
-		}
+		runnerGroup = g.Name
+		deps = append(deps, group)
 	}
 
 	release, err := helmv3.NewRelease(ctx, name+"-scale-set", &helmv3.ReleaseArgs{

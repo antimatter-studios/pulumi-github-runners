@@ -10,8 +10,8 @@ import (
 )
 
 type registered struct {
-	typ, name string
-	inputs    resource.PropertyMap
+	typ, name, provider string
+	inputs              resource.PropertyMap
 }
 
 type mocks struct {
@@ -21,7 +21,7 @@ type mocks struct {
 
 func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	m.mu.Lock()
-	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Inputs})
+	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs})
 	m.mu.Unlock()
 	return args.Name + "-id", args.Inputs, nil
 }
@@ -67,9 +67,7 @@ func runPool(t *testing.T, a PoolArgs) *mocks {
 func TestPoolWithAPATAndAGroup(t *testing.T) {
 	a := basePool()
 	a.Token = stringInput("runner-pat")
-	a.AdminToken = stringInput("admin-pat")
 	a.RunnerGroup = &RunnerGroup{Name: "ryzen", AllowsPublicRepositories: bp(true)}
-	a.ForkPrApproval = sp("all_external_contributors")
 	a.NetworkPolicy = &PoolNetworkPolicy{}
 	m := runPool(t, a)
 
@@ -79,19 +77,23 @@ func TestPoolWithAPATAndAGroup(t *testing.T) {
 	}
 	secret := m.find(t, "kubernetes:core/v1:Secret", "-github")
 	data := obj(secret.inputs["stringData"])
-	if len(data) != 1 || !data.HasValue("github_token") {
-		t.Fatalf("ARC's secret holds %v: only github_token belongs there", data.StableKeys())
+	if len(data) != 1 {
+		t.Fatalf("ARC's PAT secret keys: %v", data.StableKeys())
 	}
-	for _, r := range m.all {
-		if r.typ != "pulumi:providers:github" && r.typ != "github-runners:index:ForkPrApproval" && strings.Contains(allStrings(resource.NewObjectProperty(r.inputs)), "admin-pat") {
-			t.Fatalf("the admin token reached %s %s", r.typ, r.name)
-		}
+	checkSecretString(t, secret.inputs["stringData"], "github_token", "runner-pat")
+	gh := m.find(t, "pulumi:providers:github", "-github-admin")
+	if gh.inputs["owner"].StringValue() != "acme" || gh.inputs.HasValue("appAuth") {
+		t.Fatal("the GitHub provider should use PAT auth for acme")
 	}
+	checkSecretString(t, resource.NewObjectProperty(gh.inputs), "token", "runner-pat")
+	checkCredentialPlacement(t, m, secret, gh, "runner-pat")
 	group := m.find(t, "github:index/actionsRunnerGroup:ActionsRunnerGroup", "-group")
 	if group.inputs["name"].StringValue() != "ryzen" || group.inputs["visibility"].StringValue() != "all" || !group.inputs["allowsPublicRepositories"].BoolValue() {
 		t.Fatalf("group %v", group.inputs)
 	}
-	m.find(t, "github-runners:index:ForkPrApproval", "-fork-pr-approval")
+	if !strings.HasSuffix(group.provider, "::"+gh.name+"::"+gh.name+"-id") {
+		t.Fatalf("runner group provider %q, want %s", group.provider, gh.name)
+	}
 	m.find(t, "kubernetes:networking.k8s.io/v1:NetworkPolicy", "-egress")
 	hooks := m.find(t, "kubernetes:core/v1:ConfigMap", "-hooks")
 	if !hooks.inputs["data"].ObjectValue().HasValue("reject-forks.sh") {
@@ -104,6 +106,55 @@ func TestPoolWithAPATAndAGroup(t *testing.T) {
 	}
 	if release.inputs["name"].StringValue() != "ryzen-linux-x64" || release.inputs["namespace"].StringValue() != "arc-runners-acme" {
 		t.Fatalf("release %v", release.inputs)
+	}
+}
+
+func TestPoolWithAGitHubAppAndAGroup(t *testing.T) {
+	a := basePool()
+	a.App = &GitHubApp{AppID: "123", InstallationID: "456", PrivateKey: stringInput("app-key")}
+	a.RunnerGroup = &RunnerGroup{Name: "ryzen", Visibility: sp("selected")}
+	m := runPool(t, a)
+
+	secret := m.find(t, "kubernetes:core/v1:Secret", "-github")
+	data := obj(secret.inputs["stringData"])
+	if len(data) != 3 || data["github_app_id"].StringValue() != "123" || data["github_app_installation_id"].StringValue() != "456" {
+		t.Fatalf("ARC's App secret keys: %v", data.StableKeys())
+	}
+	checkSecretString(t, secret.inputs["stringData"], "github_app_private_key", "app-key")
+	gh := m.find(t, "pulumi:providers:github", "-github-admin")
+	if gh.inputs["owner"].StringValue() != "acme" || gh.inputs.HasValue("token") {
+		t.Fatal("the GitHub provider should use App auth for acme")
+	}
+	auth := obj(gh.inputs["appAuth"])
+	if auth["id"].StringValue() != "123" || auth["installationId"].StringValue() != "456" {
+		t.Fatal("the GitHub provider should use the pool's App and installation IDs")
+	}
+	checkSecretString(t, gh.inputs["appAuth"], "pemFile", "app-key")
+	checkCredentialPlacement(t, m, secret, gh, "app-key")
+	group := m.find(t, "github:index/actionsRunnerGroup:ActionsRunnerGroup", "-group")
+	if group.inputs["visibility"].StringValue() != "selected" ||
+		!strings.HasSuffix(group.provider, "::"+gh.name+"::"+gh.name+"-id") {
+		t.Fatalf("runner group %v uses provider %q", group.inputs, group.provider)
+	}
+}
+
+func checkSecretString(t *testing.T, parent resource.PropertyValue, name resource.PropertyKey, want string) {
+	t.Helper()
+	prop := obj(parent)[name]
+	if !(parent.IsSecret() || prop.IsSecret()) || allStrings(prop) != want+"\n" {
+		t.Errorf("%s did not receive the pool credential as a secret", name)
+	}
+}
+
+func checkCredentialPlacement(t *testing.T, m *mocks, secret, gh registered, credential string) {
+	t.Helper()
+	for _, r := range m.all {
+		if r.typ == "github-runners:index:ForkPrApproval" {
+			t.Fatal("Pool must not create ForkPrApproval")
+		}
+		if r.typ != secret.typ && r.typ != gh.typ && strings.Contains(allStrings(resource.NewObjectProperty(r.inputs)), credential) {
+			t.Fatalf("the credential reached %s %s", r.typ, r.name)
+		}
 	}
 }
 
@@ -138,7 +189,7 @@ func TestAnInvalidPoolCreatesNothing(t *testing.T) {
 		_, err := NewPool(ctx, "acme", a)
 		return err
 	}, pulumi.WithMocks("project", "stack", m))
-	if err == nil || !strings.Contains(err.Error(), "exactly one of token") || len(m.all) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "exactly one of app") || len(m.all) != 0 {
 		t.Fatalf("err %v, %d resources", err, len(m.all))
 	}
 }

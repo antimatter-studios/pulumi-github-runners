@@ -1,1 +1,2 @@
-bin/
+/provider/bin/
+node_modules/

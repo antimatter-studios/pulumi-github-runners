@@ -25,6 +25,7 @@ func TestTheChartKeepsThePodAsWritten(t *testing.T) {
 	a.MaxRunners = ip(4)
 	a.Devices = map[string]string{"devic.es/kvm": "1"}
 	a.PodResources = &PodResources{CPULimit: sp("4"), MemoryLimit: sp("2Gi")}
+	a.CPULimit = sp("8")
 	a.SupplementalGroups = []int{993}
 	a.TopologySpread = bp(true)
 	dir := t.TempDir()
@@ -71,6 +72,14 @@ func TestTheChartKeepsThePodAsWritten(t *testing.T) {
 		if g, w := container(t, pod, name), container(t, want, name); !jsonEqual(g, w) {
 			t.Errorf("container %s changed by the chart:\n got %v\nwant %v", name, g, w)
 		}
+		limits := get(t, container(t, pod, name), "resources", "limits").(map[string]any)
+		if limits["cpu"] != nil || limits["memory"] != nil {
+			t.Errorf("%s has its own CPU or memory limit: %v", name, limits)
+		}
+	}
+	runner := container(t, pod, "runner")
+	if !jsonEqual(runner["command"], wantRunnerCommand) {
+		t.Errorf("rendered runner command %v, want %v", runner["command"], wantRunnerCommand)
 	}
 	if got := len(get(t, pod, "spec", "containers").([]any)); got != 2 {
 		t.Errorf("%d containers: the chart added one", got)

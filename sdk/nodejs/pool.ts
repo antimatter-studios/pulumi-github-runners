@@ -41,13 +41,12 @@ export class Pool extends pulumi.ComponentResource {
             if (args?.configUrl === undefined && !opts.urn) {
                 throw new Error("Missing required property 'configUrl'");
             }
-            if (args?.id === undefined && !opts.urn) {
-                throw new Error("Missing required property 'id'");
+            if (args?.poolId === undefined && !opts.urn) {
+                throw new Error("Missing required property 'poolId'");
             }
             if (args?.scaleSetName === undefined && !opts.urn) {
                 throw new Error("Missing required property 'scaleSetName'");
             }
-            resourceInputs["adminToken"] = args?.adminToken ? pulumi.secret(args.adminToken) : undefined;
             resourceInputs["app"] = args?.app;
             resourceInputs["configUrl"] = args?.configUrl;
             resourceInputs["cpuLimit"] = args?.cpuLimit;
@@ -57,9 +56,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["dockerStorageLimit"] = args?.dockerStorageLimit;
             resourceInputs["ephemeralStorageLimit"] = args?.ephemeralStorageLimit;
             resourceInputs["ephemeralStorageRequest"] = args?.ephemeralStorageRequest;
-            resourceInputs["forkPrApproval"] = args?.forkPrApproval;
             resourceInputs["hook"] = args?.hook;
-            resourceInputs["id"] = args?.id;
             resourceInputs["image"] = args?.image;
             resourceInputs["maxRunners"] = args?.maxRunners;
             resourceInputs["memoryLimit"] = args?.memoryLimit;
@@ -68,6 +65,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["networkPolicy"] = args?.networkPolicy;
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
+            resourceInputs["poolId"] = args?.poolId;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["supplementalGroups"] = args?.supplementalGroups;
@@ -89,11 +87,7 @@ export class Pool extends pulumi.ComponentResource {
  */
 export interface PoolArgs {
     /**
-     * A PAT with organisation Administration read and write, used only to manage the runner group and the fork PR approval policy. It never enters the cluster.
-     */
-    adminToken?: pulumi.Input<string | undefined>;
-    /**
-     * A GitHub App for ARC instead of a PAT.
+     * Recommended GitHub App credential for ARC and the optional runner group. Set exactly one of app or token. For runner group management, the App needs organisation Self-hosted runners: write.
      */
     app?: pulumi.Input<inputs.GitHubAppArgs | undefined>;
     /**
@@ -101,30 +95,25 @@ export interface PoolArgs {
      */
     configUrl: string;
     /**
-     * The runner container's CPU limit. Default none: a job uses whatever CPU is free.
+     * The runner container's CPU limit. Defaults to no container CPU limit. A pod-level CPU limit takes precedence.
      */
     cpuLimit?: string;
     cpuRequest?: string;
     /**
-     * Device-plugin resources each runner gets, e.g. {"devic.es/fuse": "1"}.
+     * Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {"devic.es/fuse": "1"}.
      */
     devices?: pulumi.Input<{[key: string]: string} | undefined>;
+    /**
+     * The Docker sidecar's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.
+     */
     dockerMemoryLimit?: string;
     dockerStorageLimit?: string;
     ephemeralStorageLimit?: string;
     ephemeralStorageRequest?: string;
     /**
-     * Hold the organisation's fork PR approval policy at this value.
-     */
-    forkPrApproval?: string;
-    /**
      * What runs before every job's first step.
      */
     hook?: pulumi.Input<inputs.PoolHookArgs | undefined>;
-    /**
-     * A DNS-safe key for the pool; its runners live in namespace arc-runners-<id>.
-     */
-    id: string;
     /**
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
@@ -133,6 +122,9 @@ export interface PoolArgs {
      * Jobs at once. Default 2.
      */
     maxRunners?: number;
+    /**
+     * The runner container's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.
+     */
     memoryLimit?: string;
     memoryRequest?: string;
     /**
@@ -144,12 +136,16 @@ export interface PoolArgs {
      */
     networkPolicy?: pulumi.Input<inputs.PoolNetworkPolicyArgs | undefined>;
     /**
-     * One budget the runner and its Docker sidecar share.
+     * One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.
      */
     podResources?: pulumi.Input<inputs.PodResourcesArgs | undefined>;
     podmanImage?: string;
     /**
-     * The organisation's runner group the runners join, created here.
+     * A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.
+     */
+    poolId: string;
+    /**
+     * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */
     runnerGroup?: pulumi.Input<inputs.RunnerGroupArgs | undefined>;
     /**
@@ -161,7 +157,7 @@ export interface PoolArgs {
      */
     supplementalGroups?: pulumi.Input<number[] | undefined>;
     /**
-     * A fine-grained PAT for ARC: Self-hosted runners read and write, and repository Administration read. Give this or app.
+     * Alternative fine-grained PAT for ARC and the optional runner group. Set exactly one of app or token. For ARC, grant Self-hosted runners read and write, and repository Administration read.
      */
     token?: pulumi.Input<string | undefined>;
     /**
