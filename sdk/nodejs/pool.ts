@@ -104,7 +104,7 @@ export interface PoolArgs {
      */
     devices?: pulumi.Input<{[key: string]: string} | undefined>;
     /**
-     * The Docker sidecar's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.
+     * The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
     dockerMemoryLimit?: string;
     dockerStorageLimit?: string;
@@ -123,7 +123,7 @@ export interface PoolArgs {
      */
     maxRunners?: number;
     /**
-     * The runner container's memory limit. Defaults to 4Gi. A pod-level memory limit takes precedence.
+     * The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
     memoryLimit?: string;
     memoryRequest?: string;

@@ -164,18 +164,25 @@ func envList(m map[string]string) []any {
 
 // podTemplate is the runner pod: the runner and its podman sidecar.
 func podTemplate(a PoolArgs) map[string]any {
+	// No CPU or memory limit unless the pool sets one: the owner's decision (2026-11-27) is that
+	// runners use whatever the machine has free, and a job that loses out fails and is rerun, rather
+	// than every job being held to a fixed share. Small requests place the pod and weight it under
+	// contention. The disk limits stay, because a job filling the node's disk takes the whole node
+	// down with it, not just itself.
 	runnerLimits := map[string]any{
-		"memory":            orDefault(a.MemoryLimit, "4Gi"),
 		"ephemeral-storage": orDefault(a.EphemeralStorageLimit, "10Gi"),
 	}
 	dockerLimits := map[string]any{
-		"memory":            orDefault(a.DockerMemoryLimit, "4Gi"),
 		"ephemeral-storage": orDefault(a.DockerStorageLimit, "20Gi"),
 	}
-	// CPU is a guideline by default: a small request places the pod and weights it under contention,
-	// and no limit lets a job use whatever is free. A pool on a node that stalls under load sets one.
 	if a.CPULimit != nil && *a.CPULimit != "" {
 		runnerLimits["cpu"] = *a.CPULimit
+	}
+	if a.MemoryLimit != nil && *a.MemoryLimit != "" {
+		runnerLimits["memory"] = *a.MemoryLimit
+	}
+	if a.DockerMemoryLimit != nil && *a.DockerMemoryLimit != "" {
+		dockerLimits["memory"] = *a.DockerMemoryLimit
 	}
 	devices := make([]string, 0, len(a.Devices))
 	for res := range a.Devices {

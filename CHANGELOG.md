@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Runner pods have no CPU or memory limit unless a pool sets one; the memory limits that defaulted
+  to 4Gi on the runner and the podman sidecar are gone. Disk (ephemeral-storage) limits stay.
 - The plugin, `pulumi-resource-github-runners`, with a generated TypeScript SDK
   (`@antimatter-studios/github-runners`).
 - `ForkPrApproval`: an organisation's fork pull request approval policy. Deleting it leaves the
