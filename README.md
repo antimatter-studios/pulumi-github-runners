@@ -71,6 +71,8 @@ live `spec.maxRunners` once, at `floor` (default 1, or `minRunners` if higher), 
 scale set, and then ignores it (`ignoreChanges: ["values.maxRunners"]` on the Helm release). Helm
 patches the scale set with a merge of its old and new render, so an unchanged field is left out
 and the agent's value stands across deploys. A pool switched over keeps its current live value.
+A Helm release that is *replaced* rather than upgraded (a change Pulumi can only make by recreating
+the release) recreates the AutoscalingRunnerSet at the floor; the agent raises it again from there.
 
 The agent applies `spec.maxRunners` with server-side apply under its own field manager
 (`runner-gate`). Helm last wrote the field, so the agent's first apply has to force ownership. It
