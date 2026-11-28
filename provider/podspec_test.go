@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -196,6 +198,96 @@ func TestThePodmanConfigStripsOomScoreAdjAndUsesNoCgroups(t *testing.T) {
 	if err := json.Unmarshal(got, &parsed); err != nil {
 		t.Fatalf("the wrapper left invalid JSON: %s", got)
 	}
+}
+
+// On the Ryzen, k3s keeps container layers and emptyDirs under a directory with a default ACL of
+// other r-x, and a socket dovecot binds 0666 came out 0664 (rest-mail e2e, 2026-11-28). The sidecar
+// strips that ACL before podman starts, and after it a new file keeps the mode its creator asked for.
+func TestTheSidecarStripsInheritedDefaultACLsBeforePodman(t *testing.T) {
+	cmd := strings.Join(toStrings(container(t, podTemplate(basePool()), "docker")["command"].([]any)), " ")
+	strip := strings.Index(cmd, podmanConfigDir+"/strip-default-acls /var/lib/containers /home/runner/_work /tmp")
+	if strip < 0 || strip > strings.Index(cmd, "exec podman system service") {
+		t.Fatalf("the sidecar must strip default ACLs before podman starts: %s", cmd)
+	}
+	if !strings.HasPrefix(podmanFiles()["strip-default-acls"], "#!/usr/bin/env python3\n") {
+		t.Fatal("strip-default-acls runs as an executable from the podman ConfigMap")
+	}
+
+	if runtime.GOOS != "linux" {
+		t.Skip("POSIX ACLs: Linux only")
+	}
+	for _, tool := range []string{"python3", "setfacl"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s is not installed", tool)
+		}
+	}
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "storage", "overlay")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("setfacl", "-R", "-d", "-m", "u::rwx,g::rwx,o::r-x", dir).CombinedOutput(); err != nil {
+		t.Skipf("the test directory's filesystem takes no ACLs: %v: %s", err, out)
+	}
+	want := os.FileMode(0o666) &^ umask(t)
+	if got := createMode(t, nested, "before"); got == want {
+		t.Skipf("the default ACL did not change a new file's mode (%v); nothing to test", got)
+	}
+
+	script := filepath.Join(t.TempDir(), "strip-default-acls")
+	if err := os.WriteFile(script, []byte(podmanFiles()["strip-default-acls"]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(script, dir, filepath.Join(dir, "missing")).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if got := createMode(t, nested, "after"); got != want {
+		t.Fatalf("a file made 0666 is %v after the strip, want %v", got, want)
+	}
+	// And in a directory made after the strip, which must inherit nothing.
+	fresh := filepath.Join(nested, "fresh")
+	if err := os.Mkdir(fresh, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if got := createMode(t, fresh, "file"); got != want {
+		t.Fatalf("a file made 0666 in a new directory is %v, want %v", got, want)
+	}
+}
+
+// createMode makes dir/name with mode 0666 and returns the mode it got.
+func createMode(t *testing.T, dir, name string) os.FileMode {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o666)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fi.Mode().Perm()
+}
+
+// umask reads the process's umask without changing it, which syscall.Umask would do process-wide.
+func umask(t *testing.T) os.FileMode {
+	t.Helper()
+	status, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(status), "\n") {
+		if v, ok := strings.CutPrefix(line, "Umask:"); ok {
+			m, err := strconv.ParseUint(strings.TrimSpace(v), 8, 32)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return os.FileMode(m)
+		}
+	}
+	t.Fatal("no Umask in /proc/self/status")
+	return 0
 }
 
 func TestTmpAndTheCheckoutAreSharedWithTheSidecar(t *testing.T) {

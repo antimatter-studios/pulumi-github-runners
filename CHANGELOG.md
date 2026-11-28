@@ -4,6 +4,12 @@
 
 - The default runner image now has the GitHub CLI (`gh`). Jobs that called it, release jobs among
   them, failed with `gh: command not found`. A pool that sets its own `image` is unaffected.
+- The podman sidecar removes inherited default POSIX ACLs from its storage, `/home/runner/_work`
+  and `/tmp` before podman starts. A default ACL makes the kernel ignore the creator's umask, so on a
+  node whose k3s data sits under one (the Ryzen's `/mnt/storage`), files and sockets in job
+  containers lost permission bits they asked for: dovecot's 0666 login socket came out 0664 and
+  refused every IMAP client. Nodes without default ACLs are unchanged.
+
 - `Controller.createNamespace`: set `false` to install into a namespace that already exists, which
   pulumi-kubernetes refuses to create. Default `true`. Setting it on a Controller that created its
   namespace deletes that namespace and everything in it.
