@@ -63,8 +63,11 @@ export class GateAgent extends pulumi.ComponentResource {
             resourceInputs["listenerNamespace"] = args?.listenerNamespace;
             resourceInputs["manageMaxRunners"] = args?.manageMaxRunners;
             resourceInputs["manageSlots"] = args?.manageSlots;
+            resourceInputs["maxRunnersMode"] = args?.maxRunnersMode;
+            resourceInputs["maxRunnersSettings"] = args?.maxRunnersSettings;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["networkPolicy"] = args?.networkPolicy;
+            resourceInputs["probe"] = args?.probe;
             resourceInputs["runnerNamespaces"] = args?.runnerNamespaces;
             resourceInputs["token"] = args?.token ? pulumi.secret(args.token) : undefined;
             resourceInputs["claimUrl"] = undefined /*out*/;
@@ -109,9 +112,17 @@ export interface GateAgentArgs {
      */
     manageMaxRunners?: boolean;
     /**
-     * Let the agent patch nodes/status, so it can publish each node's runner slots (the extended resource runners.antimatter.studios/slot) for pools with slots enabled. Default false; nothing broader than nodes/status patch is granted.
+     * Let the probe publish each node's runner slots (the extended resource runners.antimatter.studios/slot) for pools with slots enabled: PROBE_SLOTS=apply and patch on nodes/status for the probe. Needs probe.enabled. Default false (dry run); nothing broader than nodes/status patch is granted.
      */
     manageSlots?: boolean;
+    /**
+     * The agent's live maxRunners: off, dry-run (log the changes) or apply (needs manageMaxRunners). Default apply with manageMaxRunners, else off.
+     */
+    maxRunnersMode?: string;
+    /**
+     * The agent's AGENT_MAX_RUNNERS_FLOOR, _STEP and _INTERVAL. Defaults 1, 1 and 1m.
+     */
+    maxRunnersSettings?: {[key: string]: string};
     /**
      * Existing namespace in which to deploy the agent. Defaults to arc-systems.
      */
@@ -120,6 +131,10 @@ export interface GateAgentArgs {
      * Who may reach the agent's port 8080. By default only pods in namespaces labelled github-runners.antimatter.studios/pool, which every Pool's namespace is.
      */
     networkPolicy?: inputs.GateAgentNetworkPolicyArgs;
+    /**
+     * The per-node probe (runner-gate probe): AIMD slots and youngest-runner eviction. Off unless enabled.
+     */
+    probe?: inputs.GateAgentProbeArgs;
     /**
      * Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.
      */

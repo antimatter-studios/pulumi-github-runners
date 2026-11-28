@@ -25,6 +25,26 @@ type GateAgentArgs struct {
 	// ManageMaxRunners lets the agent set each pool's live maxRunners (see PoolMaxRunnersAgent). Off
 	// by default, for the same reason.
 	ManageMaxRunners *bool `pulumi:"manageMaxRunners,optional"`
+	// MaxRunnersMode is the agent's live maxRunners: off, dry-run or apply (AGENT_MAX_RUNNERS).
+	MaxRunnersMode *string `pulumi:"maxRunnersMode,optional"`
+	// MaxRunnersSettings are the agent's other AGENT_MAX_RUNNERS_* settings.
+	MaxRunnersSettings map[string]string `pulumi:"maxRunnersSettings,optional"`
+	// Probe is the per-node runner-gate probe (#23, #31).
+	Probe *GateAgentProbe `pulumi:"probe,optional"`
+}
+
+// GateAgentProbe runs runner-gate probe on every node: AIMD runner slots from pressure, and eviction
+// of the youngest runner pod when memory runs out.
+type GateAgentProbe struct {
+	Enabled  *bool             `pulumi:"enabled,optional"`
+	Evict    *string           `pulumi:"evict,optional"`
+	Settings map[string]string `pulumi:"settings,optional"`
+}
+
+func (p *GateAgentProbe) Annotate(an infer.Annotator) {
+	an.Describe(&p.Enabled, "Run the probe, a DaemonSet on every node. Default false. It logs its slot decisions; it publishes them only with manageSlots.")
+	an.Describe(&p.Evict, "Pressure-triggered eviction of the youngest runner pod: off, dry-run (log only) or on. Default dry-run. on lets the probe delete pods in runnerNamespaces, and only there.")
+	an.Describe(&p.Settings, "The probe's other settings, PROBE_* env, e.g. {PROBE_CEILING: \"8\", PROBE_PSI_MEMORY_SOME_HIGH: \"15\"}. Defaults and meanings: antimatter-vps docs/runner-gate.md. PROBE_SLOTS and PROBE_EVICT come from manageSlots and evict.")
 }
 
 // GateAgentNetworkPolicy guards the agent's port: runner namespaces, plus the sources listed here.
@@ -49,7 +69,10 @@ func (a *GateAgentArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.RunnerNamespaces, "Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.")
 	an.Describe(&a.Interval, "How often to push a pool snapshot, e.g. 10s. Defaults to the agent's interval.")
 	an.Describe(&a.ImagePull, "Registry credentials for the agent image's pull Secret.")
-	an.Describe(&a.ManageSlots, "Let the agent patch nodes/status, so it can publish each node's runner slots (the extended resource "+defaultSlotResource+") for pools with slots enabled. Default false; nothing broader than nodes/status patch is granted.")
+	an.Describe(&a.ManageSlots, "Let the probe publish each node's runner slots (the extended resource "+defaultSlotResource+") for pools with slots enabled: PROBE_SLOTS=apply and patch on nodes/status for the probe. Needs probe.enabled. Default false (dry run); nothing broader than nodes/status patch is granted.")
+	an.Describe(&a.MaxRunnersMode, "The agent's live maxRunners: off, dry-run (log the changes) or apply (needs manageMaxRunners). Default apply with manageMaxRunners, else off.")
+	an.Describe(&a.MaxRunnersSettings, "The agent's AGENT_MAX_RUNNERS_FLOOR, _STEP and _INTERVAL. Defaults 1, 1 and 1m.")
+	an.Describe(&a.Probe, "The per-node probe (runner-gate probe): AIMD slots and youngest-runner eviction. Off unless enabled.")
 	an.Describe(&a.ManageMaxRunners, "Let the agent read and patch the AutoscalingRunnerSets in runnerNamespaces, so it can set each pool's live maxRunners under its ceiling. Default false; granted in runnerNamespaces only.")
 	an.Describe(&a.NetworkPolicy, "Who may reach the agent's port 8080. By default only pods in namespaces labelled "+poolNamespaceLabel+", which every Pool's namespace is.")
 }

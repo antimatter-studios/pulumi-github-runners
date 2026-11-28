@@ -77,7 +77,7 @@ func checkGateAgent(a GateAgentArgs) error {
 			}
 		}
 	}
-	return nil
+	return checkGateAgentCapacity(a)
 }
 
 // gateAgentPodLabels are what the Service and the ingress policy select the agent by, and what a
@@ -146,6 +146,7 @@ func gateAgentDeployment(a GateAgentArgs, namespace pulumi.StringInput) *appsv1.
 	if interval := orDefault(a.Interval, ""); interval != "" {
 		env = append(env, &corev1.EnvVarArgs{Name: pulumi.String("GATE_AGENT_INTERVAL"), Value: pulumi.String(interval)})
 	}
+	env = append(env, gateAgentCapacityEnv(a, namespace)...)
 
 	meta := gateAgentMetadata(gateAgentName, namespace)
 	meta.Labels = labels
@@ -288,7 +289,7 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace pulumi.StringInput
 			gateAgentListRule("metrics.k8s.io", "pods"),
 			gateAgentListRule("actions.github.com", "ephemeralrunners"),
 		}
-		if a.ManageMaxRunners != nil && *a.ManageMaxRunners {
+		if manageMaxRunners(a) {
 			// list to read each pool's ceiling annotation, patch to apply the live maxRunners with
 			// its own field manager. Only in the runner namespaces, where the pools' scale sets are.
 			rules = append(rules, &rbacv1.PolicyRuleArgs{
@@ -296,6 +297,9 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace pulumi.StringInput
 				Resources: pulumi.ToStringArray([]string{"autoscalingrunnersets"}),
 				Verbs:     pulumi.ToStringArray([]string{"list", "patch"}),
 			})
+		} else if maxRunnersMode(a) == "dry-run" {
+			// A dry run reads the ceilings and current values, and writes nothing.
+			rules = append(rules, gateAgentListRule("actions.github.com", "autoscalingrunnersets"))
 		}
 		pair := newPair("runner-"+namespace, gateAgentName+"-runner", ns, rules)
 		pair.deps = runners.Deps
@@ -308,16 +312,6 @@ func gateAgentClusterRole(a GateAgentArgs, namespace pulumi.StringInput) (*rbacv
 	rules := rbacv1.PolicyRuleArray{
 		gateAgentListRule("", "nodes"),
 		gateAgentListRule("metrics.k8s.io", "nodes"),
-	}
-	if a.ManageSlots != nil && *a.ManageSlots {
-		// The node's status, where its slot capacity is published, and nothing else of the node:
-		// not its spec, labels or taints. RBAC cannot narrow this to the one capacity key, so the
-		// agent's own code keeps to it.
-		rules = append(rules, &rbacv1.PolicyRuleArgs{
-			ApiGroups: pulumi.ToStringArray([]string{""}),
-			Resources: pulumi.ToStringArray([]string{"nodes/status"}),
-			Verbs:     pulumi.ToStringArray([]string{"patch"}),
-		})
 	}
 	return &rbacv1.ClusterRoleArgs{
 		Metadata: gateAgentMetadata(gateAgentName, nil),
