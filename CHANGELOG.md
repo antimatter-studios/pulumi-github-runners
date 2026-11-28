@@ -24,6 +24,15 @@
   Pulumi creates the scale set at `floor` and then ignores the live field. Off by default.
 - `GateAgent.manageMaxRunners`: grants the agent `list` and `patch` on `autoscalingrunnersets` in its
   runner namespaces only. Off by default.
+- Component inputs a program may pass as Outputs now take them: `GateAgent.cluster`, `image`,
+  `gateUrl`, `namespace`, `listenerNamespace`, `runnerNamespaces` and `imagePull` (each field, or the
+  whole object as one secret Output); `Pool.app` (likewise), `env`, `hook.env`,
+  `networkPolicy.gateAgentNamespace`, `gateClaim.url` and `gateClaim.agentNamespace`; and
+  `Controller.monitoring.networkPolicy.gateAgentNamespace` and `monitoring.dashboard.namespace`.
+  Before, an Output there (a secret, a Pool's namespace) failed the deployment at Construct:
+  "copying input ...: expected destination type to implement pulumi.Input or pulumi.Output".
+- Every other input is plain in the schema, so the SDK types it as a plain value and a program's type
+  check refuses an Output there, instead of the deployment failing.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent

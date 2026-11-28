@@ -31,7 +31,7 @@ export interface ControllerArgs {
     /**
      * Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.
      */
-    devices?: pulumi.Input<pulumi.Input<inputs.DeviceOfferArgs>[] | undefined>;
+    devices?: inputs.DeviceOfferArgs[];
     /**
      * Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.
      */
@@ -39,7 +39,7 @@ export interface ControllerArgs {
     /**
      * Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.
      */
-    monitoring?: pulumi.Input<inputs.ControllerMonitoringArgs | undefined>;
+    monitoring?: inputs.ControllerMonitoringArgs;
     /**
      * Where the controller runs. Default arc-systems.
      */
@@ -47,7 +47,7 @@ export interface ControllerArgs {
     /**
      * Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.
      */
-    prePull?: pulumi.Input<inputs.PrePullArgs | undefined>;
+    prePull?: inputs.PrePullArgs;
     /**
      * The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.
      */
@@ -55,7 +55,7 @@ export interface ControllerArgs {
     /**
      * The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.
      */
-    resources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
+    resources?: inputs.ContainerResourcesArgs;
     /**
      * The ARC chart version. Default 0.15.1.
      */

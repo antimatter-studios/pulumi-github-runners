@@ -7,15 +7,15 @@ import (
 
 // GateAgentArgs configure one cluster's runner-gate agent.
 type GateAgentArgs struct {
-	Cluster           string             `pulumi:"cluster"`
-	Token             pulumi.StringInput `pulumi:"token" provider:"secret"`
-	Image             string             `pulumi:"image"`
-	GateURL           *string            `pulumi:"gateUrl,optional"`
-	Namespace         *string            `pulumi:"namespace,optional"`
-	ListenerNamespace *string            `pulumi:"listenerNamespace,optional"`
-	RunnerNamespaces  []string           `pulumi:"runnerNamespaces"`
-	Interval          *string            `pulumi:"interval,optional"`
-	ImagePull         GateAgentImagePull `pulumi:"imagePull"`
+	Cluster           pulumi.StringInput      `pulumi:"cluster"`
+	Token             pulumi.StringInput      `pulumi:"token" provider:"secret"`
+	Image             pulumi.StringInput      `pulumi:"image"`
+	GateURL           pulumi.StringPtrInput   `pulumi:"gateUrl,optional"`
+	Namespace         pulumi.StringPtrInput   `pulumi:"namespace,optional"`
+	ListenerNamespace pulumi.StringPtrInput   `pulumi:"listenerNamespace,optional"`
+	RunnerNamespaces  pulumi.StringArrayInput `pulumi:"runnerNamespaces"`
+	Interval          *string                 `pulumi:"interval,optional"`
+	ImagePull         GateAgentImagePullInput `pulumi:"imagePull"`
 
 	NetworkPolicy *GateAgentNetworkPolicy `pulumi:"networkPolicy,optional"`
 
@@ -37,13 +37,6 @@ type GateAgentNetworkPolicy struct {
 type GateAgentSource struct {
 	NamespaceLabels map[string]string `pulumi:"namespaceLabels,optional"`
 	PodLabels       map[string]string `pulumi:"podLabels,optional"`
-}
-
-// GateAgentImagePull supplies the credentials for the agent image registry.
-type GateAgentImagePull struct {
-	Registry *string            `pulumi:"registry,optional"`
-	Username string             `pulumi:"username"`
-	Password pulumi.StringInput `pulumi:"password" provider:"secret"`
 }
 
 func (a *GateAgentArgs) Annotate(an infer.Annotator) {
@@ -83,7 +76,9 @@ type PoolArgs struct {
 	ConfigURL    string `pulumi:"configUrl"`
 	ScaleSetName string `pulumi:"scaleSetName"`
 
-	App   *GitHubApp         `pulumi:"app,optional"`
+	// A pointer to the interface: Pulumi's schema wants an optional object behind a pointer, and the
+	// interface is what takes the whole object as one Output.
+	App   *GitHubAppInput    `pulumi:"app,optional"`
 	Token pulumi.StringInput `pulumi:"token,optional" provider:"secret"`
 
 	RunnerGroup *RunnerGroup `pulumi:"runnerGroup,optional"`
@@ -114,10 +109,10 @@ type PoolArgs struct {
 	// Env is every job's default environment, which a job can override. Its use is telling jobs how
 	// much of the machine to assume: with no CPU limit, nproc and every tool's default parallelism
 	// see the whole node, so two jobs each sized to all of it overload the node.
-	Env           map[string]string  `pulumi:"env,optional"`
-	Hook          *PoolHook          `pulumi:"hook,optional"`
-	NetworkPolicy *PoolNetworkPolicy `pulumi:"networkPolicy,optional"`
-	Slots         *PoolSlots         `pulumi:"slots,optional"`
+	Env           pulumi.StringMapInput `pulumi:"env,optional"`
+	Hook          *PoolHook             `pulumi:"hook,optional"`
+	NetworkPolicy *PoolNetworkPolicy    `pulumi:"networkPolicy,optional"`
+	Slots         *PoolSlots            `pulumi:"slots,optional"`
 
 	ListenerPriorityClassName *string              `pulumi:"listenerPriorityClassName,optional"`
 	ListenerResources         *ContainerResources  `pulumi:"listenerResources,optional"`
@@ -129,8 +124,8 @@ type PoolArgs struct {
 // PoolGateClaim has every job claim its runner-gate reservation before its first step. Exactly one
 // field is set.
 type PoolGateClaim struct {
-	URL            *string `pulumi:"url,optional"`
-	AgentNamespace *string `pulumi:"agentNamespace,optional"`
+	URL            pulumi.StringPtrInput `pulumi:"url,optional"`
+	AgentNamespace pulumi.StringPtrInput `pulumi:"agentNamespace,optional"`
 }
 
 // PoolMaxRunnersAgent hands the pool's live maxRunners to the runner-gate agent (#25). maxRunners
@@ -150,13 +145,6 @@ type PoolSlots struct {
 	ResourceName *string `pulumi:"resourceName,optional"`
 }
 
-// GitHubApp is the recommended credential for a pool.
-type GitHubApp struct {
-	AppID          string             `pulumi:"appId"`
-	InstallationID string             `pulumi:"installationId"`
-	PrivateKey     pulumi.StringInput `pulumi:"privateKey" provider:"secret"`
-}
-
 // RunnerGroup is the organisation's runner group the pool's runners join, created with the pool's credential.
 type RunnerGroup struct {
 	Name                     string  `pulumi:"name"`
@@ -174,17 +162,17 @@ type PodResources struct {
 
 // PoolHook is what runs before every job's first step.
 type PoolHook struct {
-	RejectForks *bool             `pulumi:"rejectForks,optional"`
-	Script      *string           `pulumi:"script,optional"`
-	Files       map[string]string `pulumi:"files,optional"`
-	Env         map[string]string `pulumi:"env,optional"`
+	RejectForks *bool                 `pulumi:"rejectForks,optional"`
+	Script      *string               `pulumi:"script,optional"`
+	Files       map[string]string     `pulumi:"files,optional"`
+	Env         pulumi.StringMapInput `pulumi:"env,optional"`
 }
 
 // PoolNetworkPolicy keeps runner pods off private addresses, except where allowed.
 type PoolNetworkPolicy struct {
-	BlockPrivate       *bool          `pulumi:"blockPrivate,optional"`
-	Allow              []NetworkAllow `pulumi:"allow,optional"`
-	GateAgentNamespace *string        `pulumi:"gateAgentNamespace,optional"`
+	BlockPrivate       *bool                 `pulumi:"blockPrivate,optional"`
+	Allow              []NetworkAllow        `pulumi:"allow,optional"`
+	GateAgentNamespace pulumi.StringPtrInput `pulumi:"gateAgentNamespace,optional"`
 }
 
 // NetworkAllow is one exception: pods matching the selectors, on these TCP ports.

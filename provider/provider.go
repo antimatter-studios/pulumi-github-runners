@@ -25,12 +25,12 @@ const PluginDownloadURL = "github://api.github.com/antimatter-studios"
 
 // Provider builds the provider the plugin serves.
 func Provider() p.Provider {
-	return infer.Provider(options(defaultGitHubAPI))
+	return withPlainInputs(infer.Provider(options(defaultGitHubAPI)))
 }
 
 // providerWith builds the provider against another GitHub API base URL, for tests.
 func providerWith(api string) p.Provider {
-	return infer.Provider(options(api))
+	return withPlainInputs(infer.Provider(options(api)))
 }
 
 func options(api string) infer.Options {

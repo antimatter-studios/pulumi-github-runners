@@ -40,9 +40,9 @@ export interface PoolArgs {
     /**
      * Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {"devic.es/fuse": "1"}.
      */
-    devices?: pulumi.Input<{
+    devices?: {
         [key: string]: string;
-    } | undefined>;
+    };
     /**
      * The Docker sidecar's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
@@ -63,11 +63,11 @@ export interface PoolArgs {
     /**
      * Claim each job's runner-gate reservation through the cluster's gate agent, after the fork check and before hook.script. A gate that cannot be reached lets the job run; an expired reservation fails it. Off unless set.
      */
-    gateClaim?: pulumi.Input<inputs.PoolGateClaimArgs | undefined>;
+    gateClaim?: inputs.PoolGateClaimArgs;
     /**
      * What runs before every job's first step.
      */
-    hook?: pulumi.Input<inputs.PoolHookArgs | undefined>;
+    hook?: inputs.PoolHookArgs;
     /**
      * The runner image, pinned by digest. Default: the antimatter actions-runner image.
      */
@@ -79,7 +79,7 @@ export interface PoolArgs {
     /**
      * The listener container's requests and limits. Default: none.
      */
-    listenerResources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
+    listenerResources?: inputs.ContainerResourcesArgs;
     /**
      * Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.
      */
@@ -91,7 +91,7 @@ export interface PoolArgs {
     /**
      * Let the runner-gate agent set the live maxRunners from the cluster's load, up to maxRunners. Off unless enabled.
      */
-    maxRunnersAgent?: pulumi.Input<inputs.PoolMaxRunnersAgentArgs | undefined>;
+    maxRunnersAgent?: inputs.PoolMaxRunnersAgentArgs;
     /**
      * The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */
@@ -104,11 +104,11 @@ export interface PoolArgs {
     /**
      * Keep runner pods off private addresses.
      */
-    networkPolicy?: pulumi.Input<inputs.PoolNetworkPolicyArgs | undefined>;
+    networkPolicy?: inputs.PoolNetworkPolicyArgs;
     /**
      * One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.
      */
-    podResources?: pulumi.Input<inputs.PodResourcesArgs | undefined>;
+    podResources?: inputs.PodResourcesArgs;
     podmanImage?: string;
     /**
      * A DNS-safe key for the pool; its runners live in namespace arc-runners-<poolId>.
@@ -121,7 +121,7 @@ export interface PoolArgs {
     /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */
-    runnerGroup?: pulumi.Input<inputs.RunnerGroupArgs | undefined>;
+    runnerGroup?: inputs.RunnerGroupArgs;
     /**
      * The runs-on label: <machine>-<os>-<arch>, e.g. ryzen-linux-x64.
      */
@@ -129,11 +129,11 @@ export interface PoolArgs {
     /**
      * Take one of the node's runner slots per runner pod, so runners are placed only where the node's load leaves room. Off unless enabled.
      */
-    slots?: pulumi.Input<inputs.PoolSlotsArgs | undefined>;
+    slots?: inputs.PoolSlotsArgs;
     /**
      * Groups the runner pod's processes join.
      */
-    supplementalGroups?: pulumi.Input<number[] | undefined>;
+    supplementalGroups?: number[];
     /**
      * Alternative fine-grained PAT for ARC and the optional runner group. Set exactly one of app or token. For ARC, grant Self-hosted runners read and write, and repository Administration read.
      */

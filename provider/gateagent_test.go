@@ -22,12 +22,12 @@ const (
 
 func testGateAgentArgs() GateAgentArgs {
 	return GateAgentArgs{
-		Cluster:          "homelab",
+		Cluster:          pulumi.String("homelab"),
 		Token:            pulumi.String(testGateAgentToken),
-		Image:            testGateAgentImage,
-		RunnerNamespaces: []string{"arc-runners-ryzen"},
-		ImagePull: GateAgentImagePull{
-			Username: "agent",
+		Image:            pulumi.String(testGateAgentImage),
+		RunnerNamespaces: pulumi.ToStringArray([]string{"arc-runners-ryzen"}),
+		ImagePull: GateAgentImagePullArgs{
+			Username: pulumi.String("agent"),
 			Password: pulumi.String(testGateAgentPassword),
 		},
 	}
@@ -41,14 +41,19 @@ func TestCheckGateAgent(t *testing.T) {
 		name string
 		edit func(*GateAgentArgs)
 	}{
-		{"cluster", func(a *GateAgentArgs) { a.Cluster = "" }},
+		{"cluster", func(a *GateAgentArgs) { a.Cluster = pulumi.String("") }},
+		{"no cluster", func(a *GateAgentArgs) { a.Cluster = nil }},
 		{"token", func(a *GateAgentArgs) { a.Token = nil }},
-		{"image", func(a *GateAgentArgs) { a.Image = "" }},
-		{"image tag", func(a *GateAgentArgs) { a.Image = gateAgentImageRepository + ":latest" }},
+		{"image", func(a *GateAgentArgs) { a.Image = pulumi.String("") }},
+		{"image tag", func(a *GateAgentArgs) { a.Image = pulumi.String(gateAgentImageRepository + ":latest") }},
 		{"runnerNamespaces", func(a *GateAgentArgs) { a.RunnerNamespaces = nil }},
-		{"empty runner namespace", func(a *GateAgentArgs) { a.RunnerNamespaces = []string{""} }},
-		{"imagePull username", func(a *GateAgentArgs) { a.ImagePull.Username = "" }},
-		{"imagePull password", func(a *GateAgentArgs) { a.ImagePull.Password = nil }},
+		{"no runner namespace", func(a *GateAgentArgs) { a.RunnerNamespaces = pulumi.StringArray{} }},
+		{"empty runner namespace", func(a *GateAgentArgs) { a.RunnerNamespaces = pulumi.ToStringArray([]string{""}) }},
+		{"imagePull username", func(a *GateAgentArgs) {
+			a.ImagePull = GateAgentImagePullArgs{Username: pulumi.String(""), Password: pulumi.String("p")}
+		}},
+		{"imagePull password", func(a *GateAgentArgs) { a.ImagePull = GateAgentImagePullArgs{Username: pulumi.String("agent")} }},
+		{"no imagePull", func(a *GateAgentArgs) { a.ImagePull = nil }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := testGateAgentArgs()
@@ -87,21 +92,33 @@ func TestAnInvalidGateAgentCreatesNothing(t *testing.T) {
 
 func TestGateAgentDeploymentDefaults(t *testing.T) {
 	a := testGateAgentArgs()
-	args := gateAgentDeployment(a, "arc-systems")
+	args := gateAgentDeployment(a, pulumi.String("arc-systems"))
 	spec := args.Spec.(*appsv1.DeploymentSpecArgs)
 	containers := spec.Template.(*corev1.PodTemplateSpecArgs).Spec.(*corev1.PodSpecArgs).Containers.(corev1.ContainerArray)
 	env := containers[0].(*corev1.ContainerArgs).Env.(corev1.EnvVarArray)
-	want := map[string]pulumi.StringPtrInput{
-		"GATE_AGENT_URL":     pulumi.String("https://runner-gate.antimatter-studios.com"),
-		"GATE_AGENT_CLUSTER": pulumi.String("homelab"),
+	want := map[string]*string{
+		"GATE_AGENT_URL":     sp("https://runner-gate.antimatter-studios.com"),
+		"GATE_AGENT_CLUSTER": sp("homelab"),
 		"GATE_AGENT_TOKEN":   nil,
-		"LISTENER_NAMESPACE": pulumi.String("arc-systems"),
-		"METRICS_PORT":       pulumi.String("8080"),
+		"LISTENER_NAMESPACE": sp("arc-systems"),
+		"METRICS_PORT":       sp("8080"),
 	}
-	got := make(map[string]pulumi.StringPtrInput, len(env))
+	got := make(map[string]*string, len(env))
 	for _, input := range env {
 		entry := input.(*corev1.EnvVarArgs)
-		got[string(entry.Name.(pulumi.String))] = entry.Value
+		got[string(entry.Name.(pulumi.String))] = nil
+		if entry.Value != nil {
+			value, ok := known[any](entry.Value)
+			if !ok {
+				t.Fatalf("%s is not known", entry.Name)
+			}
+			switch v := value.(type) {
+			case string:
+				got[string(entry.Name.(pulumi.String))] = &v
+			case *string:
+				got[string(entry.Name.(pulumi.String))] = v
+			}
+		}
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("default environment = %v, want %v", got, want)
@@ -110,10 +127,10 @@ func TestGateAgentDeploymentDefaults(t *testing.T) {
 
 func TestGateAgent(t *testing.T) {
 	a := testGateAgentArgs()
-	a.Namespace = sp("gate")
-	a.GateURL = sp("https://gate.example")
-	a.ListenerNamespace = sp("listeners")
-	a.RunnerNamespaces = []string{"arc-runners-ryzen", "listeners", "arc-runners-ryzen"}
+	a.Namespace = pulumi.StringPtr("gate")
+	a.GateURL = pulumi.StringPtr("https://gate.example")
+	a.ListenerNamespace = pulumi.StringPtr("listeners")
+	a.RunnerNamespaces = pulumi.ToStringArray([]string{"arc-runners-ryzen", "listeners", "arc-runners-ryzen"})
 	a.Interval = sp("10s")
 
 	m := &mocks{}
