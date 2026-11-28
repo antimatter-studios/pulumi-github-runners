@@ -15,8 +15,9 @@ import (
 // built in github.com/antimatter-studios/actions-runner-image and pinned by digest. Pods used to
 // apt-get those tools at start: 42-87 s a job, and on 2026-11-19 one apt-get update hung for 8h45m
 // and its runner never registered. 31c1bb8 (actions-runner-image#7) also drops packages.microsoft.com
-// as an apt source, whose 403s failed jobs on 2026-11-27 (antimatter-vps #203).
-const DefaultRunnerImage = "ghcr.io/antimatter-studios/actions-runner:2.338.2-31c1bb8@sha256:5500713dffc79e980dbba54f9bd4b91f4f6d911caa163db49fcc70291773bd5f"
+// as an apt source, whose 403s failed jobs on 2026-11-27 (antimatter-vps #203). f6e4647
+// (actions-runner-image#9) adds gh, whose absence failed release jobs.
+const DefaultRunnerImage = "ghcr.io/antimatter-studios/actions-runner:2.338.2-f6e4647@sha256:c4b1e5e39d02663e8900294e5155fff2c8004498b96f8a6764a3c325e270a1a5"
 
 // DefaultPodmanImage is the Docker-compatible API for jobs, as a sidecar.
 const DefaultPodmanImage = "quay.io/podman/stable:v6.1.3@sha256:1d280cfab8e4cdaa221229c121f681c67463fbd82ad2fa6d13fdcf91c6fc747e"
