@@ -158,6 +158,14 @@ check_deployed() {
     .spec.minRunners == 0 and .spec.maxRunners == 2
   ' <<<"$set" >/dev/null || fail "AutoscalingRunnerSet metadata or spec: $(jq -c '{labels: .metadata.labels, annotations: .metadata.annotations, spec: (.spec | del(.template))}' <<<"$set")"
   pass "AutoscalingRunnerSet kind-linux-x64 has its name, labels, annotations and spec"
+  local marker
+  marker="$(jq -r '.metadata.annotations["runners.antimatter.studios/max-runners-agent"] // "none"' <<<"$set")"
+  local want_marker=none
+  if [ "$manage_max_runners" = true ]; then want_marker=true; fi
+  [ "$marker" = "$want_marker" ] || fail "max-runners-agent annotation $marker, want $want_marker"
+  jq -e '.metadata.annotations["runners.antimatter.studios/max-runners-ceiling"] == null' <<<"$set" >/dev/null ||
+    fail "a max-runners-ceiling annotation: the agent has no cap"
+  pass "AutoscalingRunnerSet max-runners-agent marker: $marker"
 
   local pod
   pod="$(jq '.spec.template.spec' <<<"$set")"
@@ -215,7 +223,7 @@ check_deployed() {
   pass "probe DaemonSet runs, PROBE_SLOTS=$slots"
   expect_rules role runner-gate-probe arc-systems "$(rule "" pods list)"
   expect_rules role runner-gate-probe arc-runners-it "$(rule "" pods list)"
-  local probe_rules=("$(rule "" nodes get)")
+  local probe_rules=("$(rule "" nodes get)" "$(rule actions.github.com autoscalingrunnersets list)")
   if [ "$manage_slots" = true ]; then probe_rules+=("$(rule "" nodes/status patch)"); fi
   expect_rules clusterrole runner-gate-probe "" "${probe_rules[@]}"
 }
@@ -247,8 +255,37 @@ deploy() { # manageSlots manageMaxRunners
   check_deployed "$1" "$2"
 }
 
+# The agent's live maxRunners survives a deploy: write it as the agent does (server-side apply, field
+# manager runner-gate), then upgrade the Helm release with another change to the pool.
+check_agent_keeps_max_runners() {
+  step "a deploy leaves the agent's maxRunners alone"
+  kubectl apply --server-side --force-conflicts --field-manager=runner-gate -f - <<'YAML' >/dev/null
+apiVersion: actions.github.com/v1alpha1
+kind: AutoscalingRunnerSet
+metadata:
+  name: kind-linux-x64
+  namespace: arc-runners-it
+spec:
+  maxRunners: 5
+YAML
+  local before after
+  before="$(kubectl get autoscalingrunnerset kind-linux-x64 -n arc-runners-it -o jsonpath='{.metadata.annotations.actions\.github\.com/values-hash}')"
+  pulumi config set poolRevision 2
+  pulumi up --yes --skip-preview --non-interactive
+  after="$(kubectl get autoscalingrunnerset kind-linux-x64 -n arc-runners-it -o jsonpath='{.metadata.annotations.actions\.github\.com/values-hash}')"
+  [ "$before" != "$after" ] || fail "the deploy did not upgrade the scale set's release"
+  local live
+  live="$(kubectl get autoscalingrunnerset kind-linux-x64 -n arc-runners-it -o jsonpath='{.spec.maxRunners}')"
+  [ "$live" = 5 ] || fail "after a deploy maxRunners is $live, want the agent's 5"
+  pass "the release upgraded and maxRunners stayed at the agent's 5"
+  # Back to the start value, so the next deploys' checks hold.
+  kubectl patch autoscalingrunnerset kind-linux-x64 -n arc-runners-it --type=merge -p '{"spec":{"maxRunners":2}}' >/dev/null
+  pulumi config set poolRevision 1
+}
+
 deploy true false
 deploy false true
+check_agent_keeps_max_runners
 deploy false false
 
 step "pulumi destroy"

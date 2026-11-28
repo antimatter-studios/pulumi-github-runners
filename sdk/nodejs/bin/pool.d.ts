@@ -85,11 +85,11 @@ export interface PoolArgs {
      */
     listenerScrapeAnnotations?: boolean;
     /**
-     * Jobs at once. Default 2. With maxRunnersAgent enabled, the ceiling the agent may raise the pool to.
+     * Jobs at once. Default 2. With maxRunnersAgent enabled, only the value a new scale set starts at: the agent then owns it, and a later change here is not applied.
      */
     maxRunners?: number;
     /**
-     * Let the runner-gate agent set the live maxRunners from the cluster's load, up to maxRunners. Off unless enabled.
+     * Let the runner-gate agent set the live maxRunners from the cluster's load, with no cap. Off unless enabled.
      */
     maxRunnersAgent?: inputs.PoolMaxRunnersAgentArgs;
     /**

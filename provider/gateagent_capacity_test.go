@@ -33,6 +33,7 @@ func grants(t *testing.T, r registered) []string {
 
 func TestTheProbePatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
 	agentReadOnly := []string{"/nodes:list", "metrics.k8s.io/nodes:list"}
+	probeReadOnly := []string{"/nodes:get", "actions.github.com/autoscalingrunnersets:list"}
 	for _, manage := range []*bool{nil, bp(false)} {
 		a := testGateAgentArgs()
 		a.ManageSlots = manage
@@ -41,7 +42,7 @@ func TestTheProbePatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
 		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-node-role")); !reflect.DeepEqual(got, agentReadOnly) {
 			t.Fatalf("manageSlots %v: agent cluster rules %v, want only %v", manage, got, agentReadOnly)
 		}
-		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got, []string{"/nodes:get"}) {
+		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got, probeReadOnly) {
 			t.Fatalf("manageSlots %v: probe cluster rules %v", manage, got)
 		}
 	}
@@ -50,7 +51,7 @@ func TestTheProbePatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
 	a.Probe = &GateAgentProbe{Enabled: bp(true)}
 	m := runGateAgent(t, a)
 	// The node's status alone: not the node itself, whose spec holds its taints; and the probe's, not the agent's.
-	if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got, []string{"/nodes:get", "/nodes/status:patch"}) {
+	if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got, append(probeReadOnly, "/nodes/status:patch")) {
 		t.Fatalf("probe cluster rules %v", got)
 	}
 	if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-node-role")); !reflect.DeepEqual(got, agentReadOnly) {
@@ -89,8 +90,8 @@ func TestGateAgentPatchesScaleSetsOnlyInRunnerNamespacesWhenItManagesMaxRunners(
 	a.ManageMaxRunners = bp(true)
 	a.Probe = &GateAgentProbe{Enabled: bp(true)}
 	m := runGateAgent(t, a)
-	// list to read the ceiling annotation, patch to write the live value: nothing else, not
-	// update or delete, and not the runner sets in any other namespace.
+	// list to find the marked pools, patch to write the live value: nothing else, not update or
+	// delete, and not the runner sets in any other namespace.
 	want := append(readOnly, "actions.github.com/autoscalingrunnersets:list,patch")
 	for _, ns := range runnerNamespaces {
 		if got := grants(t, m.find(t, rbacPrefix+"Role", "-runner-"+ns+"-role")); !reflect.DeepEqual(got, want) {
@@ -103,7 +104,8 @@ func TestGateAgentPatchesScaleSetsOnlyInRunnerNamespacesWhenItManagesMaxRunners(
 				continue
 			}
 			for _, g := range grants(t, r) {
-				if strings.Contains(g, "autoscalingrunnersets") {
+				// The probe lists them everywhere, to bound its node's slots; it writes none.
+				if strings.Contains(g, "autoscalingrunnersets") && !(strings.HasSuffix(r.name, "-probe-node-role") && g == "actions.github.com/autoscalingrunnersets:list") {
 					t.Errorf("%s %s grants %s outside the runner namespaces", kind, r.name, g)
 				}
 			}
@@ -147,14 +149,14 @@ func TestTheProbeIsOffByDefault(t *testing.T) {
 
 func TestTheProbeRunsOnEveryNodeInDryRunWithItsSettings(t *testing.T) {
 	a := testGateAgentArgs()
-	a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"PROBE_CEILING": "8", "PROBE_INCREASE_STEP": "2"}}
+	a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"PROBE_PSI_MEMORY_SOME_HIGH": "15", "PROBE_INCREASE_STEP": "2"}}
 	a.MaxRunnersMode = sp("dry-run")
 	a.MaxRunnersSettings = map[string]string{"AGENT_MAX_RUNNERS_INTERVAL": "2m"}
 	m := runGateAgent(t, a)
 	ds := m.find(t, "kubernetes:apps/v1:DaemonSet", "-probe")
 	env := envOf(t, ds, "probe")
 	want := map[string]string{"NODE_NAME": "<from>", "LISTENER_NAMESPACE": "arc-systems", "PROBE_SLOTS": "dry-run",
-		"PROBE_EVICT": "dry-run", "PROBE_CEILING": "8", "PROBE_INCREASE_STEP": "2"}
+		"PROBE_EVICT": "dry-run", "PROBE_PSI_MEMORY_SOME_HIGH": "15", "PROBE_INCREASE_STEP": "2"}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("probe env %v, want %v", env, want)
 	}
@@ -209,8 +211,12 @@ func TestCapacitySettingsAreChecked(t *testing.T) {
 		want string
 	}{
 		{func(a *GateAgentArgs) { a.Probe = &GateAgentProbe{Enabled: bp(true), Evict: sp("yes")} }, "probe.evict"},
-		{func(a *GateAgentArgs) { a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"CEILING": "4"}} }, "not a PROBE_* setting"},
-		{func(a *GateAgentArgs) { a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"PROBE_SLOTS": "apply"}} }, "set by the component"},
+		{func(a *GateAgentArgs) {
+			a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"CEILING": "4"}}
+		}, "not a PROBE_* setting"},
+		{func(a *GateAgentArgs) {
+			a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"PROBE_SLOTS": "apply"}}
+		}, "set by the component"},
 		{func(a *GateAgentArgs) { a.Probe = &GateAgentProbe{Enabled: bp(true)}; a.MaxRunnersMode = sp("apply") }, "needs manageMaxRunners"},
 		{func(a *GateAgentArgs) { a.MaxRunnersMode = sp("dry-run") }, "needs probe.enabled"},
 		{func(a *GateAgentArgs) { a.Probe = &GateAgentProbe{Enabled: bp(true)}; a.MaxRunnersMode = sp("on") }, "must be off, dry-run or apply"},
@@ -218,7 +224,19 @@ func TestCapacitySettingsAreChecked(t *testing.T) {
 			a.Probe = &GateAgentProbe{Enabled: bp(true)}
 			a.MaxRunnersMode = sp("dry-run")
 			a.MaxRunnersSettings = map[string]string{"AGENT_MAX_RUNNERS": "apply"}
-		}, "AGENT_MAX_RUNNERS_FLOOR"},
+		}, "AGENT_MAX_RUNNERS_STEP or _INTERVAL"},
+		// No counts or caps: the bounds come from the hardware, the settings are how the loop reacts.
+		{func(a *GateAgentArgs) {
+			a.Probe = &GateAgentProbe{Enabled: bp(true)}
+			a.MaxRunnersMode = sp("dry-run")
+			a.MaxRunnersSettings = map[string]string{"AGENT_MAX_RUNNERS_FLOOR": "1"}
+		}, "no counts or caps"},
+		{func(a *GateAgentArgs) {
+			a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"PROBE_CEILING": "8"}}
+		}, "fixed slot count"},
+		{func(a *GateAgentArgs) {
+			a.Probe = &GateAgentProbe{Enabled: bp(true), Settings: map[string]string{"PROBE_FLOOR": "1"}}
+		}, "fixed slot count"},
 	}
 	for _, c := range cases {
 		a := testGateAgentArgs()
@@ -232,5 +250,25 @@ func TestCapacitySettingsAreChecked(t *testing.T) {
 	a.Probe = &GateAgentProbe{Enabled: bp(true)}
 	if err := checkGateAgent(a); err != nil || maxRunnersMode(a) != "apply" {
 		t.Fatalf("manageMaxRunners alone means apply: %v %s", err, maxRunnersMode(a))
+	}
+}
+
+// The agent patches the scale sets only in apply mode: manageMaxRunners with a dry run lists them.
+func TestTheAgentPatchesScaleSetsOnlyInApplyMode(t *testing.T) {
+	for mode, want := range map[string]string{"dry-run": "actions.github.com/autoscalingrunnersets:list",
+		"apply": "actions.github.com/autoscalingrunnersets:list,patch"} {
+		a := testGateAgentArgs()
+		a.ManageMaxRunners = bp(true)
+		a.MaxRunnersMode = sp(mode)
+		a.Probe = &GateAgentProbe{Enabled: bp(true)}
+		m := runGateAgent(t, a)
+		got := grants(t, m.find(t, rbacPrefix+"Role", "-runner-arc-runners-ryzen-role"))
+		if got[len(got)-1] != want {
+			t.Errorf("%s: agent runner rules %v, want %s last", mode, got, want)
+		}
+		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got,
+			[]string{"/nodes:get", "actions.github.com/autoscalingrunnersets:list"}) {
+			t.Errorf("%s: probe cluster rules %v: it lists the scale sets cluster-wide and writes none", mode, got)
+		}
 	}
 }

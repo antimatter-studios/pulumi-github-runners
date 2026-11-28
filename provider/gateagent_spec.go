@@ -289,16 +289,18 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace pulumi.StringInput
 			gateAgentListRule("metrics.k8s.io", "pods"),
 			gateAgentListRule("actions.github.com", "ephemeralrunners"),
 		}
-		if manageMaxRunners(a) {
-			// list to read each pool's ceiling annotation, patch to apply the live maxRunners with
-			// its own field manager. Only in the runner namespaces, where the pools' scale sets are.
+		switch maxRunnersMode(a) {
+		case "apply":
+			// list to find the pools marked as the agent's, patch to apply their spec.maxRunners
+			// with its own field manager. Only in the runner namespaces, where the pools' scale sets
+			// are. RBAC cannot narrow patch to the one field; the agent's own code keeps to it.
 			rules = append(rules, &rbacv1.PolicyRuleArgs{
 				ApiGroups: pulumi.ToStringArray([]string{"actions.github.com"}),
 				Resources: pulumi.ToStringArray([]string{"autoscalingrunnersets"}),
 				Verbs:     pulumi.ToStringArray([]string{"list", "patch"}),
 			})
-		} else if maxRunnersMode(a) == "dry-run" {
-			// A dry run reads the ceilings and current values, and writes nothing.
+		case "dry-run":
+			// A dry run reads the marked pools and their current values, and writes nothing.
 			rules = append(rules, gateAgentListRule("actions.github.com", "autoscalingrunnersets"))
 		}
 		pair := newPair("runner-"+namespace, gateAgentName+"-runner", ns, rules)

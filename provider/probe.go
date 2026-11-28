@@ -23,10 +23,13 @@ const (
 
 var (
 	probeSettingName      = regexp.MustCompile(`^PROBE_[A-Z0-9_]+$`)
-	maxRunnersSettingName = regexp.MustCompile(`^AGENT_MAX_RUNNERS_(FLOOR|STEP|INTERVAL)$`)
+	maxRunnersSettingName = regexp.MustCompile(`^AGENT_MAX_RUNNERS_(STEP|INTERVAL)$`)
 	// Set by the component, from its own inputs.
 	probeReservedSettings = map[string]bool{"PROBE_SLOTS": true, "PROBE_EVICT": true, "PROBE_NAMESPACE": true,
 		"PROBE_SELECTOR": true, "PROBE_PORT": true, "PROBE_ROOT": true}
+	// Fixed slot counts. The probe derives its bounds from the node's hardware; the only settings are
+	// how it reacts.
+	probeCountSettings = map[string]bool{"PROBE_FLOOR": true, "PROBE_CEILING": true}
 )
 
 func probeEnabled(a GateAgentArgs) bool {
@@ -73,6 +76,9 @@ func checkGateAgentCapacity(a GateAgentArgs) error {
 			if probeReservedSettings[k] {
 				return fmt.Errorf("gate agent: probe.settings %s is set by the component", k)
 			}
+			if probeCountSettings[k] {
+				return fmt.Errorf("gate agent: probe.settings %s is a fixed slot count; the probe takes its bounds from the node, so set only thresholds, rates and the interval", k)
+			}
 		}
 	}
 	switch m := maxRunnersMode(a); m {
@@ -86,7 +92,7 @@ func checkGateAgentCapacity(a GateAgentArgs) error {
 	}
 	for k := range a.MaxRunnersSettings {
 		if !maxRunnersSettingName.MatchString(k) {
-			return fmt.Errorf("gate agent: maxRunnersSettings %q must be AGENT_MAX_RUNNERS_FLOOR, _STEP or _INTERVAL", k)
+			return fmt.Errorf("gate agent: maxRunnersSettings %q must be AGENT_MAX_RUNNERS_STEP or _INTERVAL: no counts or caps", k)
 		}
 	}
 	if maxRunnersMode(a) != "off" && !probeEnabled(a) {
@@ -225,14 +231,16 @@ func gateProbeRoles(a GateAgentArgs, probeNamespace pulumi.StringInput, runners 
 	return out
 }
 
-// gateProbeClusterRole: get nodes (its own node's published slots) and, with manageSlots, patch
-// nodes/status. Not nodes itself, so the probe cannot touch a node's spec, labels or taints.
+// gateProbeClusterRole: get nodes (its own node's allocatable and published slots), list the scale
+// sets (their runner pod requests bound the node's slots, so no count is configured) and, with
+// manageSlots, patch nodes/status. Not nodes itself, so the probe cannot touch a node's spec, labels
+// or taints. The probe never writes a scale set: the agent alone writes the live maxRunners.
 func gateProbeClusterRole(a GateAgentArgs, namespace pulumi.StringInput) (*rbacv1.ClusterRoleArgs, *rbacv1.ClusterRoleBindingArgs) {
 	rules := rbacv1.PolicyRuleArray{&rbacv1.PolicyRuleArgs{
 		ApiGroups: pulumi.ToStringArray([]string{""}),
 		Resources: pulumi.ToStringArray([]string{"nodes"}),
 		Verbs:     pulumi.ToStringArray([]string{"get"}),
-	}}
+	}, gateAgentListRule("actions.github.com", "autoscalingrunnersets")}
 	if manageSlots(a) {
 		rules = append(rules, &rbacv1.PolicyRuleArgs{
 			ApiGroups: pulumi.ToStringArray([]string{""}),

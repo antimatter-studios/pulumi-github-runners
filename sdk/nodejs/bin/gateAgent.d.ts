@@ -51,7 +51,7 @@ export interface GateAgentArgs {
      */
     listenerNamespace?: pulumi.Input<string | undefined>;
     /**
-     * Let the agent read and patch the AutoscalingRunnerSets in runnerNamespaces, so it can set each pool's live maxRunners under its ceiling. Default false; granted in runnerNamespaces only.
+     * Let the agent read and patch the AutoscalingRunnerSets in runnerNamespaces, so it can set each pool's live maxRunners (spec.maxRunners only, by its own code). Default false; granted in runnerNamespaces only.
      */
     manageMaxRunners?: boolean;
     /**
@@ -63,7 +63,7 @@ export interface GateAgentArgs {
      */
     maxRunnersMode?: string;
     /**
-     * The agent's AGENT_MAX_RUNNERS_FLOOR, _STEP and _INTERVAL. Defaults 1, 1 and 1m.
+     * How the agent's live maxRunners reacts: AGENT_MAX_RUNNERS_STEP (the most one change raises a pool, default 1) and AGENT_MAX_RUNNERS_INTERVAL (the least time between two changes of a pool, default 1m). No counts or caps.
      */
     maxRunnersSettings?: {
         [key: string]: string;

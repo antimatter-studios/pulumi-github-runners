@@ -118,7 +118,6 @@ func TestEveryInputTheSDKTakesAsAnOutputTakesOne(t *testing.T) {
 		pool + "listenerScrapeAnnotations":                      true,
 		pool + "gateClaim":                                      true,
 		pool + "maxRunnersAgent.enabled":                        true,
-		pool + "maxRunnersAgent.floor":                          true,
 		agent + "manageMaxRunners":                              true,
 	} {
 		if got, ok := plain[path]; !ok {

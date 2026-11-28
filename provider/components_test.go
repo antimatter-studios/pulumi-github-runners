@@ -205,8 +205,8 @@ func TestPoolWithAGateClaim(t *testing.T) {
 }
 
 // With the agent owning the live maxRunners, Pulumi must not manage the field after creation: a
-// deploy after the agent has raised it would otherwise put it back. The ceiling still follows the
-// declared maxRunners on every deploy.
+// deploy after the agent has changed it would otherwise put it back. The declared maxRunners is the
+// value the scale set starts at, not a cap, and the scale set carries the agent's marker.
 func TestPulumiLetsTheAgentOwnTheLiveMaxRunners(t *testing.T) {
 	a := withApp(basePool())
 	release := runPool(t, a).find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
@@ -221,9 +221,9 @@ func TestPulumiLetsTheAgentOwnTheLiveMaxRunners(t *testing.T) {
 		t.Fatalf("ignoreChanges %v, want only values.maxRunners", release.ignoreChanges)
 	}
 	values := release.inputs["values"].ObjectValue()
-	ceiling := values["resourceMeta"].ObjectValue()["autoscalingRunnerSet"].ObjectValue()["annotations"].ObjectValue()
-	if values["maxRunners"].NumberValue() != 1 || ceiling[maxRunnersCeilingAnnotation].StringValue() != "8" {
-		t.Fatalf("values %v: want maxRunners at the floor, 1, and the ceiling 8", values)
+	annotations := values["resourceMeta"].ObjectValue()["autoscalingRunnerSet"].ObjectValue()["annotations"].ObjectValue()
+	if values["maxRunners"].NumberValue() != 8 || annotations[maxRunnersAgentAnnotation].StringValue() != "true" || len(annotations) != 1 {
+		t.Fatalf("values %v: want maxRunners 8 as the start value and only the agent's marker", values)
 	}
 }
 

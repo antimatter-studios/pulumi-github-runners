@@ -73,7 +73,7 @@ export interface GateAgentProbeArgs {
      */
     evict?: string;
     /**
-     * The probe's other settings, PROBE_* env, e.g. {PROBE_CEILING: "8", PROBE_PSI_MEMORY_SOME_HIGH: "15"}. Defaults and meanings: antimatter-vps docs/runner-gate.md. PROBE_SLOTS and PROBE_EVICT come from manageSlots and evict.
+     * How the probe reacts, PROBE_* env: pressure thresholds, rates and interval, e.g. {PROBE_PSI_MEMORY_SOME_HIGH: "15", PROBE_INCREASE_STEP: "1"}. Defaults and meanings: antimatter-vps docs/runner-gate.md. No slot counts: PROBE_FLOOR and PROBE_CEILING are refused, the bounds come from the node. PROBE_SLOTS and PROBE_EVICT come from manageSlots and evict.
      */
     settings?: {
         [key: string]: string;
@@ -215,13 +215,9 @@ export interface PoolHookArgs {
 }
 export interface PoolMaxRunnersAgentArgs {
     /**
-     * Let the runner-gate agent own the live maxRunners. Default false. maxRunners then becomes the ceiling, published on the AutoscalingRunnerSet as the annotation runners.antimatter.studios/max-runners-ceiling.
+     * Let the runner-gate agent own the live maxRunners. Default false. The AutoscalingRunnerSet is marked with the annotation runners.antimatter.studios/max-runners-agent, maxRunners is written only when the scale set is created, and Pulumi ignores the live field after that.
      */
     enabled?: boolean;
-    /**
-     * The maxRunners a new scale set starts at, before the agent raises it. Default 1, or minRunners if higher. Written only when the scale set is created: an existing pool keeps its live value, and a later change to floor is not applied.
-     */
-    floor?: number;
 }
 export interface PoolNetworkPolicyArgs {
     allow?: inputs.NetworkAllowArgs[];

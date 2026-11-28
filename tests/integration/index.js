@@ -10,6 +10,8 @@ const runners = require("../../sdk/nodejs");
 const config = new pulumi.Config();
 const manageSlots = config.requireBoolean("manageSlots");
 const manageMaxRunners = config.requireBoolean("manageMaxRunners");
+// Changes the pool's chart values without touching maxRunners, so a deploy upgrades the Helm release.
+const poolRevision = config.get("poolRevision") ?? "1";
 
 const controller = new runners.Controller("controller", {
     // A device that does not exist: the plugin's DaemonSet still runs and offers none of it.
@@ -30,6 +32,9 @@ const pool = new runners.Pool("pool", {
     token: pulumi.secret("ghp_integration_dummy_token"),
     devices: { "devic.es/fake": "1" },
     networkPolicy: {},
+    env: { INTEGRATION_POOL_REVISION: poolRevision },
+    // With manageMaxRunners the agent owns the live maxRunners; maxRunners is only its start value.
+    maxRunnersAgent: { enabled: manageMaxRunners },
 }, { dependsOn: [controller] });
 
 new runners.GateAgent("gate", {
