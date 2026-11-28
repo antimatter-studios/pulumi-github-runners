@@ -176,5 +176,8 @@ Manage the organisation's fork pull request approval policy with the standalone
 
 - `cd provider && go vet ./... && go test -race ./...`
 - `scripts/gen-sdk.sh` after any change to a resource: CI fails when `sdk/nodejs` is stale.
+- `tests/integration/run.sh` deploys every component to a throwaway kind cluster, checks it with
+  kubectl and destroys it (needs Docker, kind, kubectl, jq and `pnpm install --frozen-lockfile`).
+  CI runs it as the `integration` job.
 - Every change adds a line under `## Unreleased` in CHANGELOG.md. Commit subjects are
   conventional (`feat:`, `fix:`), which decides the next version.

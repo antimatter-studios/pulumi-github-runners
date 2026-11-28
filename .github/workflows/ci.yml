@@ -58,11 +58,49 @@ jobs:
             exit 1
           fi
 
+  integration:
+    # Deploys every component to a kind cluster with `pulumi up`, checks it with kubectl, then
+    # destroys it and checks nothing is left (tests/integration/run.sh). No GitHub credentials: the
+    # scale set never registers, which is expected.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: provider/go.mod
+          cache-dependency-path: provider/go.sum
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.273.0
+
+      - name: Install kind
+        run: go install sigs.k8s.io/kind@v0.29.0
+
+      - name: Generate the SDK
+        # The program loads sdk/nodejs; regenerating it here tests the SDK this commit's plugin makes.
+        run: scripts/gen-sdk.sh
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Integration test
+        run: tests/integration/run.sh
+
   ci:
     # The release workflow (pulumi-homelab's release.yml) releases a commit only when a check named
     # "CI" passed on it. This job is that check; add every new job to its needs.
     name: CI
-    needs: [go, sdk]
+    needs: [go, sdk, integration]
     if: always()
     runs-on: ubuntu-latest
     steps:
