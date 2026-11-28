@@ -125,6 +125,10 @@ export interface PoolArgs {
      */
     priorityClassName?: string;
     /**
+     * Pull docker.io images through the Controller's registryMirror, falling back to Docker Hub when it cannot answer. With a networkPolicy, runners may reach the mirror's pods on its port. Off unless set.
+     */
+    registryMirror?: inputs.PoolRegistryMirrorArgs;
+    /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */
     runnerGroup?: inputs.RunnerGroupArgs;

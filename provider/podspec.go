@@ -169,8 +169,12 @@ func hookFiles(h PoolHook, claim bool) (map[string]string, error) {
 	return files, nil
 }
 
-func podmanFiles() map[string]string {
-	return map[string]string{"storage.conf": podmanStorageConf, "containers.conf": podmanContainersConf, "crun": crunWrapper, "strip-default-acls": stripDefaultACLsScript}
+func podmanFiles(mirror *PoolRegistryMirror) map[string]string {
+	files := map[string]string{"storage.conf": podmanStorageConf, "containers.conf": podmanContainersConf, "crun": crunWrapper, "strip-default-acls": stripDefaultACLsScript}
+	if mirror != nil {
+		files[registryMirrorFile] = registryMirrorConf(poolMirrorNamespace(*mirror))
+	}
+	return files
 }
 
 func orDefault(v *string, d string) string {
@@ -338,6 +342,11 @@ func podTemplate(a PoolArgs) map[string]any {
 			map[string]any{"name": "docker-socket", "mountPath": dockerSocketDir},
 			map[string]any{"name": "podman-config", "mountPath": podmanConfigDir, "readOnly": true},
 		},
+	}
+	if a.RegistryMirror != nil {
+		// A drop-in beside the image's own registries.conf, which keeps its search list and aliases.
+		docker["volumeMounts"] = append(docker["volumeMounts"].([]any),
+			map[string]any{"name": "podman-config", "mountPath": registryMirrorDropIn, "subPath": registryMirrorFile, "readOnly": true})
 	}
 
 	spec := map[string]any{

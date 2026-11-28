@@ -75,6 +75,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["podmanImage"] = args?.podmanImage;
             resourceInputs["poolId"] = args?.poolId;
             resourceInputs["priorityClassName"] = args?.priorityClassName;
+            resourceInputs["registryMirror"] = args?.registryMirror;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["slots"] = args?.slots;
@@ -190,6 +191,10 @@ export interface PoolArgs {
      * The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.
      */
     priorityClassName?: string;
+    /**
+     * Pull docker.io images through the Controller's registryMirror, falling back to Docker Hub when it cannot answer. With a networkPolicy, runners may reach the mirror's pods on its port. Off unless set.
+     */
+    registryMirror?: inputs.PoolRegistryMirrorArgs;
     /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */

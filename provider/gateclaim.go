@@ -69,11 +69,19 @@ func checkGateClaim(c PoolGateClaim) error {
 }
 
 // poolNetworkPolicy is the pool's network policy, letting its runners reach the agent in
-// gateClaim.agentNamespace unless the policy names a namespace itself. Only for a pool with one.
+// gateClaim.agentNamespace unless the policy names a namespace itself, and the registry mirror when
+// the pool pulls through one, whose address is private. Only for a pool with one.
 func poolNetworkPolicy(a PoolArgs) PoolNetworkPolicy {
 	n := *a.NetworkPolicy
 	if !givenString(n.GateAgentNamespace) && a.GateClaim != nil {
 		n.GateAgentNamespace = a.GateClaim.AgentNamespace
+	}
+	if a.RegistryMirror != nil {
+		n.Allow = append(append([]NetworkAllow{}, n.Allow...), NetworkAllow{
+			NamespaceLabels: map[string]string{"kubernetes.io/metadata.name": poolMirrorNamespace(*a.RegistryMirror)},
+			PodLabels:       map[string]string{"app": registryMirrorName},
+			Ports:           []int{registryMirrorPort},
+		})
 	}
 	return n
 }

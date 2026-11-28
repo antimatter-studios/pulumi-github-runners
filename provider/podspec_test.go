@@ -161,7 +161,7 @@ func TestDockerIsTheRootlessPodmanSidecar(t *testing.T) {
 }
 
 func TestThePodmanConfigStripsOomScoreAdjAndUsesNoCgroups(t *testing.T) {
-	f := podmanFiles()
+	f := podmanFiles(nil)
 	if !strings.Contains(f["containers.conf"], `cgroups = "disabled"`) || !strings.Contains(f["containers.conf"], `crun = ["/etc/arc-podman/crun"]`) {
 		t.Fatalf("containers.conf:\n%s", f["containers.conf"])
 	}
@@ -209,7 +209,7 @@ func TestTheSidecarStripsInheritedDefaultACLsBeforePodman(t *testing.T) {
 	if strip < 0 || strip > strings.Index(cmd, "exec podman system service") {
 		t.Fatalf("the sidecar must strip default ACLs before podman starts: %s", cmd)
 	}
-	if !strings.HasPrefix(podmanFiles()["strip-default-acls"], "#!/usr/bin/env python3\n") {
+	if !strings.HasPrefix(podmanFiles(nil)["strip-default-acls"], "#!/usr/bin/env python3\n") {
 		t.Fatal("strip-default-acls runs as an executable from the podman ConfigMap")
 	}
 
@@ -235,7 +235,7 @@ func TestTheSidecarStripsInheritedDefaultACLsBeforePodman(t *testing.T) {
 	}
 
 	script := filepath.Join(t.TempDir(), "strip-default-acls")
-	if err := os.WriteFile(script, []byte(podmanFiles()["strip-default-acls"]), 0o755); err != nil {
+	if err := os.WriteFile(script, []byte(podmanFiles(nil)["strip-default-acls"]), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := exec.Command(script, dir, filepath.Join(dir, "missing")).CombinedOutput(); err != nil {

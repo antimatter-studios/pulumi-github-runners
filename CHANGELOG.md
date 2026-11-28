@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `Controller.registryMirror`: a Docker Hub pull-through cache in the cluster, and `Pool.registryMirror`
+  to pull docker.io images through it. Each runner pod's podman starts with empty storage, so every
+  job pulled its images from Docker Hub again, and a machine's runners share one IPv4 address and its
+  100 anonymous pulls an hour. On the Ryzen at 12 runners the quota ran out
+  (`ratelimit-remaining: 0;w=3600`): podman's pull got `toomanyrequests` and rest-mail's E2E jobs failed
+  at the next step with `image not known`. With the mirror, Docker Hub serves each image once. Pools
+  without `registryMirror` are unchanged.
 - The default runner image now has udev (`udevadm`), kmod (`modprobe`, `lsmod`), fdisk (`sfdisk`,
   `fdisk`) and acl (`setfacl`, `getfacl`), as GitHub's ubuntu-24.04 image does. KVM jobs failed in
   fs-linux-test-harness's `ci-setup-linux.sh` with `sudo: udevadm: command not found`. A pool that

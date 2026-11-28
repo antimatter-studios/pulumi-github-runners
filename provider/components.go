@@ -36,13 +36,14 @@ const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc
 
 // ControllerArgs are a Controller's inputs: one per cluster.
 type ControllerArgs struct {
-	Namespace         *string       `pulumi:"namespace,optional"`
-	CreateNamespace   *bool         `pulumi:"createNamespace,optional"`
-	Version           *string       `pulumi:"version,optional"`
-	ListenerMetrics   *bool         `pulumi:"listenerMetrics,optional"`
-	Devices           []DeviceOffer `pulumi:"devices,optional"`
-	DevicePluginImage *string       `pulumi:"devicePluginImage,optional"`
-	PrePull           *PrePull      `pulumi:"prePull,optional"`
+	Namespace         *string         `pulumi:"namespace,optional"`
+	CreateNamespace   *bool           `pulumi:"createNamespace,optional"`
+	Version           *string         `pulumi:"version,optional"`
+	ListenerMetrics   *bool           `pulumi:"listenerMetrics,optional"`
+	Devices           []DeviceOffer   `pulumi:"devices,optional"`
+	DevicePluginImage *string         `pulumi:"devicePluginImage,optional"`
+	PrePull           *PrePull        `pulumi:"prePull,optional"`
+	RegistryMirror    *RegistryMirror `pulumi:"registryMirror,optional"`
 
 	PriorityClassName *string             `pulumi:"priorityClassName,optional"`
 	Resources         *ContainerResources `pulumi:"resources,optional"`
@@ -85,6 +86,7 @@ func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
 	an.Describe(&a.Monitoring, "Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.")
 	an.Describe(&a.PrePull, "Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.")
+	an.Describe(&a.RegistryMirror, "A Docker Hub pull-through cache in the controller's namespace, "+registryMirrorName+":"+strconv.Itoa(registryMirrorPort)+", for pools with registryMirror set. Off unless set. Every runner pod starts with empty image storage, and Docker Hub allows 100 anonymous pulls an hour per IPv4 address, which a machine's runners share.")
 	an.Describe(&a.PriorityClassName, "The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.")
 	an.Describe(&a.Resources, "The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.")
 }
@@ -238,6 +240,11 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 			return nil, err
 		}
 	}
+	if a.RegistryMirror != nil {
+		if err := newRegistryMirror(ctx, name, namespace, *a.RegistryMirror, child, inNS); err != nil {
+			return nil, err
+		}
+	}
 	if a.Monitoring != nil {
 		if err := newMonitoring(ctx, name, namespace, *a.Monitoring, child, inNS); err != nil {
 			return nil, err
@@ -324,7 +331,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	}
 	podman, err := corev1.NewConfigMap(ctx, name+"-podman", &corev1.ConfigMapArgs{
 		Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(podmanConfigMap), Namespace: pulumi.String(namespace)},
-		Data:     pulumi.ToStringMap(podmanFiles()),
+		Data:     pulumi.ToStringMap(podmanFiles(a.RegistryMirror)),
 	}, child, inNS)
 	if err != nil {
 		return nil, err

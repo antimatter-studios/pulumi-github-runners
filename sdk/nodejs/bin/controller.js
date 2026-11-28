@@ -63,6 +63,7 @@ class Controller extends pulumi.ComponentResource {
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["prePull"] = args?.prePull;
             resourceInputs["priorityClassName"] = args?.priorityClassName;
+            resourceInputs["registryMirror"] = args?.registryMirror;
             resourceInputs["resources"] = args?.resources;
             resourceInputs["version"] = args?.version;
         }

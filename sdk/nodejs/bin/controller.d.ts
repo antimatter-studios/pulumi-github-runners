@@ -53,6 +53,10 @@ export interface ControllerArgs {
      */
     priorityClassName?: string;
     /**
+     * A Docker Hub pull-through cache in the controller's namespace, registry-mirror:5000, for pools with registryMirror set. Off unless set. Every runner pod starts with empty image storage, and Docker Hub allows 100 anonymous pulls an hour per IPv4 address, which a machine's runners share.
+     */
+    registryMirror?: inputs.RegistryMirrorArgs;
+    /**
      * The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.
      */
     resources?: inputs.ContainerResourcesArgs;

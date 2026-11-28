@@ -227,6 +227,12 @@ export interface PoolNetworkPolicyArgs {
      */
     gateAgentNamespace?: pulumi.Input<string | undefined>;
 }
+export interface PoolRegistryMirrorArgs {
+    /**
+     * The namespace of the Controller that runs the mirror. Default arc-systems.
+     */
+    namespace?: string;
+}
 export interface PoolSlotsArgs {
     /**
      * Request one runner slot per runner pod. Default false. Only nodes where the GateAgent (manageSlots) has published slots can run the pool's pods; until then they stay Pending and their jobs wait at GitHub.
@@ -246,6 +252,24 @@ export interface PrePullArgs {
      * The pre-pull pods' PriorityClass, e.g. a low one so they are evicted first. Default: none. The class must exist.
      */
     priorityClassName?: string;
+}
+export interface RegistryMirrorArgs {
+    /**
+     * The registry image, pinned by digest. Default: distribution 3.1.2 from GHCR.
+     */
+    image?: string;
+    /**
+     * The mirror pod's PriorityClass. Default: none. The class must exist.
+     */
+    priorityClassName?: string;
+    /**
+     * The cache volume's StorageClass. Default: the cluster's default class.
+     */
+    storageClassName?: string;
+    /**
+     * The cache's PersistentVolumeClaim size. Default 20Gi. Entries expire 7 days after their last pull.
+     */
+    storageSize?: string;
 }
 export interface RunnerGroupArgs {
     allowsPublicRepositories?: boolean;
