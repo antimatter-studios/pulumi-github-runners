@@ -125,6 +125,7 @@ type PoolArgs struct {
 	PodResources            *PodResources `pulumi:"podResources,optional"`
 
 	TopologySpread     *bool             `pulumi:"topologySpread,optional"`
+	NodeSelector       map[string]string `pulumi:"nodeSelector,optional"`
 	PriorityClassName  *string           `pulumi:"priorityClassName,optional"`
 	Devices            map[string]string `pulumi:"devices,optional"`
 	SupplementalGroups []int             `pulumi:"supplementalGroups,optional"`
@@ -222,6 +223,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.PodResources, "One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.")
 	an.Describe(&a.PriorityClassName, "The runner pods' PriorityClass, e.g. a low one so the cluster's own services win under pressure and runners are evicted first. The class must exist.")
 	an.Describe(&a.TopologySpread, "Spread the pool's runners evenly across nodes, hard. For multi-node clusters.")
+	an.Describe(&a.NodeSelector, "Only nodes with these labels run the pool's runners, e.g. {\"kubernetes.io/hostname\": \"s2\"} for one pool per node, so whatever picks the pool's label (the runner gate) picks the node.")
 	an.Describe(&a.Devices, "Device-plugin resources each runner pod gets, in both the runner and its Docker sidecar (so a pod takes the count twice), e.g. {\"devic.es/fuse\": \"1\"}.")
 	an.Describe(&a.SupplementalGroups, "Groups the runner pod's processes join.")
 	an.Describe(&a.Env, "Every job's default environment, which a job can override, e.g. {GOMAXPROCS: \"2\", CARGO_BUILD_JOBS: \"2\", FLTH_RESOURCE_PROFILE: \"low\"}: with no CPU limit, jobs otherwise size their parallelism to the whole node.")

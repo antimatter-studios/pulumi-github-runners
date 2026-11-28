@@ -87,6 +87,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["memoryRequest"] = args?.memoryRequest;
             resourceInputs["minRunners"] = args?.minRunners;
             resourceInputs["networkPolicy"] = args?.networkPolicy;
+            resourceInputs["nodeSelector"] = args?.nodeSelector;
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
             resourceInputs["poolId"] = args?.poolId;

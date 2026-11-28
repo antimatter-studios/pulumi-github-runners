@@ -70,6 +70,7 @@ export class Pool extends pulumi.ComponentResource {
             resourceInputs["memoryRequest"] = args?.memoryRequest;
             resourceInputs["minRunners"] = args?.minRunners;
             resourceInputs["networkPolicy"] = args?.networkPolicy;
+            resourceInputs["nodeSelector"] = args?.nodeSelector;
             resourceInputs["podResources"] = args?.podResources;
             resourceInputs["podmanImage"] = args?.podmanImage;
             resourceInputs["poolId"] = args?.poolId;
@@ -172,6 +173,10 @@ export interface PoolArgs {
      * Keep runner pods off private addresses.
      */
     networkPolicy?: inputs.PoolNetworkPolicyArgs;
+    /**
+     * Only nodes with these labels run the pool's runners, e.g. {"kubernetes.io/hostname": "s2"} for one pool per node, so whatever picks the pool's label (the runner gate) picks the node.
+     */
+    nodeSelector?: {[key: string]: string};
     /**
      * One budget the runner and its Docker sidecar share. A pod-level CPU or memory limit replaces the corresponding container limits.
      */

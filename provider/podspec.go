@@ -367,6 +367,9 @@ func podTemplate(a PoolArgs) map[string]any {
 			"labelSelector":     map[string]any{"matchLabels": map[string]any{"app.kubernetes.io/component": "runner"}},
 		}}
 	}
+	if len(a.NodeSelector) > 0 {
+		spec["nodeSelector"] = a.NodeSelector
+	}
 	// One budget the runner and the sidecar share (pod-level resources, Kubernetes 1.34+), instead of
 	// a fixed split that leaves one container's share idle while the other is OOM-killed.
 	if r := a.PodResources; r != nil {
