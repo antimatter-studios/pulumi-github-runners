@@ -525,11 +525,8 @@ func TestCheckPool(t *testing.T) {
 			a.ConfigURL, a.RunnerGroup = "https://github.com/acme/repo", &RunnerGroup{Name: "ryzen"}
 		},
 		"reserved hook file": func(a *PoolArgs) { a.Hook = &PoolHook{Files: map[string]string{"custom.sh": ""}} },
-		"agent floor above maxRunners": func(a *PoolArgs) {
-			a.MaxRunners, a.MaxRunnersAgent = ip(4), &PoolMaxRunnersAgent{Enabled: bp(true), Floor: ip(5)}
-		},
-		"agent floor below minRunners": func(a *PoolArgs) {
-			a.MinRunners, a.MaxRunners, a.MaxRunnersAgent = ip(2), ip(4), &PoolMaxRunnersAgent{Enabled: bp(true), Floor: ip(1)}
+		"agent start below minRunners": func(a *PoolArgs) {
+			a.MinRunners, a.MaxRunners, a.MaxRunnersAgent = ip(3), ip(2), &PoolMaxRunnersAgent{Enabled: bp(true)}
 		},
 		"slot without a domain": func(a *PoolArgs) {
 			a.Slots = &PoolSlots{Enabled: bp(true), ResourceName: sp("slot")}
@@ -687,40 +684,42 @@ func TestScaleSetValues(t *testing.T) {
 }
 
 func TestMaxRunnersStaysDeclaredUnlessTheAgentOwnsIt(t *testing.T) {
-	for _, agent := range []*PoolMaxRunnersAgent{nil, {}, {Enabled: bp(false), Floor: ip(1)}} {
+	for _, agent := range []*PoolMaxRunnersAgent{nil, {}, {Enabled: bp(false)}} {
 		a := basePool()
 		a.MaxRunners = ip(6)
 		a.MaxRunnersAgent = agent
 		v := scaleSetValues(a, "s", "")
 		if v["maxRunners"] != 6 || has(t, v, "resourceMeta") {
-			t.Fatalf("agent %+v: values %v, want the declared maxRunners and no ceiling", agent, v)
+			t.Fatalf("agent %+v: values %v, want the declared maxRunners and no marker", agent, v)
 		}
 	}
 }
 
-func TestTheAgentStartsAPoolAtTheFloorUnderItsCeiling(t *testing.T) {
+// With the agent, maxRunners is only where a new scale set starts: no floor of its own, no ceiling
+// annotation, nothing that caps the agent.
+func TestTheAgentStartsAPoolAtMaxRunnersWithNoCap(t *testing.T) {
 	for _, tc := range []struct {
-		name              string
-		min, floor        *int
-		wantMax, wantMinR int
+		name     string
+		min, max *int
+		wantMax  int
 	}{
-		{"default floor", nil, nil, 1, 0},
-		{"floor follows minRunners", ip(3), nil, 3, 3},
-		{"explicit floor", ip(1), ip(2), 2, 1},
+		{"default", nil, nil, 2},
+		{"declared", nil, ip(6), 6},
+		{"start at minRunners", ip(3), ip(3), 3},
 	} {
 		a := basePool()
-		a.MinRunners, a.MaxRunners = tc.min, ip(6)
-		a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true), Floor: tc.floor}
+		a.MinRunners, a.MaxRunners = tc.min, tc.max
+		a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true)}
 		if err := checkPool(withApp(a)); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		v := scaleSetValues(a, "s", "")
-		if v["maxRunners"] != tc.wantMax || v["minRunners"] != tc.wantMinR {
-			t.Errorf("%s: maxRunners %v minRunners %v, want %d and %d", tc.name, v["maxRunners"], v["minRunners"], tc.wantMax, tc.wantMinR)
+		if v["maxRunners"] != tc.wantMax {
+			t.Errorf("%s: maxRunners %v, want the start value %d", tc.name, v["maxRunners"], tc.wantMax)
 		}
-		// A string: annotation values are strings, and the chart quotes them anyway.
-		if got := get(t, v, "resourceMeta", "autoscalingRunnerSet", "annotations", maxRunnersCeilingAnnotation); got != "6" {
-			t.Errorf("%s: ceiling %v, want \"6\"", tc.name, got)
+		annotations := get(t, v, "resourceMeta", "autoscalingRunnerSet", "annotations").(map[string]any)
+		if !reflect.DeepEqual(annotations, map[string]any{maxRunnersAgentAnnotation: "true"}) {
+			t.Errorf("%s: annotations %v, want only the agent's marker", tc.name, annotations)
 		}
 	}
 }

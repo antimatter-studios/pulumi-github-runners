@@ -234,19 +234,22 @@ func TestTheChartsRenderMonitoring(t *testing.T) {
 	}
 }
 
-// The ceiling has to reach the AutoscalingRunnerSet itself, where the agent reads it, and the live
-// field has to start at the floor.
-func TestTheChartPublishesTheCeilingOnTheScaleSet(t *testing.T) {
+// The agent's marker has to reach the AutoscalingRunnerSet itself, where the agent lists it, and the
+// live field has to start at the declared maxRunners.
+func TestTheChartMarksTheScaleSetAsTheAgents(t *testing.T) {
 	needHelm(t)
 	a := basePool()
 	a.MaxRunners = ip(6)
 	a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true)}
 	set := renderScaleSet(t, a, "ryzen")
-	if get(t, set, "spec", "maxRunners") != float64(1) {
-		t.Fatalf("maxRunners %v, want the floor 1", get(t, set, "spec", "maxRunners"))
+	if get(t, set, "spec", "maxRunners") != float64(6) {
+		t.Fatalf("maxRunners %v, want the start value 6", get(t, set, "spec", "maxRunners"))
 	}
-	if got := get(t, set, "metadata", "annotations", maxRunnersCeilingAnnotation); got != "6" {
-		t.Fatalf("ceiling annotation %v, want \"6\"", got)
+	if got := get(t, set, "metadata", "annotations", maxRunnersAgentAnnotation); got != "true" {
+		t.Fatalf("marker annotation %v, want \"true\"", got)
+	}
+	if has(t, set, "metadata", "annotations", "runners.antimatter.studios/max-runners-ceiling") {
+		t.Fatal("a ceiling annotation: the agent has no cap")
 	}
 }
 

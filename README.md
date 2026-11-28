@@ -104,8 +104,10 @@ The agent reads every probe's slots and reports them to the gate (gate rule `LOA
   runs out the probe deletes the youngest runner pod (a pod still starting first), one at a time,
   before systemd-oomd or the kernel choose their own victim. `on` grants `delete` on pods in
   `runnerNamespaces` only.
-- `probe.settings`: the other `PROBE_*` settings as strings: thresholds, floor and ceiling, increase
-  step, decrease factor, cooldowns, interval and the eviction triggers. Every setting and its default
+- `probe.settings`: how the probe reacts, as `PROBE_*` strings: pressure thresholds, increase step,
+  decrease factor, cooldowns, interval and the eviction triggers. No slot counts: the probe takes its
+  bounds from the node (its allocatable over a runner pod's requests), and the plugin refuses
+  `PROBE_FLOOR` and `PROBE_CEILING`. Every setting and its default
   is in antimatter-vps `docs/runner-gate.md` ("Node probe").
 - RBAC, its own ServiceAccount: `list pods` in the listener and runner namespaces, `get nodes`.
 
@@ -164,26 +166,35 @@ GateAgent's `networkPolicy.allow`, with the same `namespaceLabels` and `podLabel
 `PodMonitor` here does not select the agent.
 ### Live maxRunners (load-aware capacity, #22)
 
-`Pool.maxRunnersAgent: {enabled: true}` hands the pool's live `maxRunners` to the runner-gate agent.
-`maxRunners` then becomes the ceiling, published on the AutoscalingRunnerSet as the annotation
-`runners.antimatter.studios/max-runners-ceiling`, and updated on every deploy. Pulumi writes the
-live `spec.maxRunners` once, at `floor` (default 1, or `minRunners` if higher), when it creates the
-scale set, and then ignores it (`ignoreChanges: ["values.maxRunners"]` on the Helm release). Helm
-patches the scale set with a merge of its old and new render, so an unchanged field is left out
-and the agent's value stands across deploys. A pool switched over keeps its current live value.
-A Helm release that is *replaced* rather than upgraded (a change Pulumi can only make by recreating
-the release) recreates the AutoscalingRunnerSet at the floor; the agent raises it again from there.
+`Pool.maxRunnersAgent: {enabled: true}` hands the pool's live `maxRunners` to the runner-gate agent,
+which grows and shrinks it with the machines' load. Nothing caps it: there is no ceiling to declare.
+
+- The plugin marks the AutoscalingRunnerSet with the annotation
+  `runners.antimatter.studios/max-runners-agent: "true"`. The agent manages only the scale sets that
+  carry it.
+- `maxRunners` is only the start value: Pulumi writes it once, when it creates the scale set. A later
+  change to `maxRunners` is not applied, and a pool switched over keeps its current live value.
+- Pulumi then leaves the field alone: `ignoreChanges: ["values.maxRunners"]` on the Helm release keeps
+  the value the release was created with, so Helm renders the same `maxRunners` on every upgrade.
+  Helm patches a custom resource with a merge patch of its old render against its new one, so an
+  unchanged field is left out of the patch and the agent's live value stands across deploys. The
+  integration test writes a value as the agent does, upgrades the release, and checks it is kept.
+- A Helm release that is *replaced* rather than upgraded recreates the scale set at `maxRunners`; the
+  agent takes it from there.
 
 The agent applies `spec.maxRunners` with server-side apply under its own field manager
 (`runner-gate`). Helm last wrote the field, so the agent's first apply has to force ownership. It
 needs `GateAgent.manageMaxRunners: true`: `list` and `patch` on `autoscalingrunnersets` in
-`runnerNamespaces` only. Both are off by default, and without them Pulumi owns `maxRunners` as before.
+`runnerNamespaces` only, and `patch` only in `apply` mode. RBAC cannot narrow `patch` to one field; the
+agent's code writes `spec.maxRunners` alone. Both are off by default, and without them Pulumi owns
+`maxRunners` as before.
 
-The agent follows the probes' slots, so it needs `probe.enabled`. `GateAgent.maxRunnersMode` is `off`,
-`dry-run` (log each change it would make; RBAC `list` only) or `apply` (needs `manageMaxRunners`, and is
-the default with it). `GateAgent.maxRunnersSettings` takes `AGENT_MAX_RUNNERS_FLOOR` (1),
-`AGENT_MAX_RUNNERS_STEP` (1, the most one change raises a pool) and `AGENT_MAX_RUNNERS_INTERVAL` (1m,
-the least time between two changes of a pool).
+The agent follows the probes' slots, so it needs `probe.enabled`. The probe lists the scale sets
+cluster-wide (its ClusterRole), to bound its node's slots by the runner pods' requests; it writes none.
+`GateAgent.maxRunnersMode` is `off`, `dry-run` (log each change it would make; RBAC `list` only) or
+`apply` (needs `manageMaxRunners`, and is the default with it). `GateAgent.maxRunnersSettings` takes only
+how the agent reacts: `AGENT_MAX_RUNNERS_STEP` (1, the most one change raises a pool) and
+`AGENT_MAX_RUNNERS_INTERVAL` (1m, the least time between two changes of a pool).
 
 ### Pool credentials
 

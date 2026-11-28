@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Changed:** with `Pool.maxRunnersAgent`, the agent's `maxRunners` has no cap (#22). The plugin marks
+  the AutoscalingRunnerSet with `runners.antimatter.studios/max-runners-agent: "true"` instead of the
+  `max-runners-ceiling` annotation, and `maxRunners` is the value a new scale set starts at, not a
+  ceiling. Pulumi still ignores the live field after creation.
+- **Removed:** `Pool.maxRunnersAgent.floor`, `AGENT_MAX_RUNNERS_FLOOR` in `GateAgent.maxRunnersSettings`,
+  and `PROBE_FLOOR` and `PROBE_CEILING` in `probe.settings`, which the plugin now refuses. The only
+  settings are how the loop reacts: pressure thresholds, rates and interval.
+- The probe's ClusterRole lists `autoscalingrunnersets` cluster-wide, to bound its node's slots by the
+  runner pods' requests. It writes none.
+- **Changed:** the agent gets `patch` on `autoscalingrunnersets` only in `maxRunnersMode: apply`;
+  `manageMaxRunners` with `dry-run` now grants `list` only.
+
 - `GateAgent.probe`: runs `runner-gate probe` on every node (#23), dry run by default, with its
   `PROBE_*` settings in `probe.settings`. `probe.evict` (`off`, `dry-run` by default, `on`) is the
   youngest-runner eviction when memory runs out (#31); `on` grants `delete` on pods in the runner
