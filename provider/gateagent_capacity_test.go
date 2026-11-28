@@ -61,3 +61,40 @@ func TestGateAgentPatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
 		}
 	}
 }
+
+func TestGateAgentPatchesScaleSetsOnlyInRunnerNamespacesWhenItManagesMaxRunners(t *testing.T) {
+	readOnly := []string{"/pods:list", "metrics.k8s.io/pods:list", "actions.github.com/ephemeralrunners:list"}
+	for _, manage := range []*bool{nil, bp(false)} {
+		a := testGateAgentArgs()
+		a.ManageMaxRunners = manage
+		got := grants(t, runGateAgent(t, a).find(t, rbacPrefix+"Role", "-runner-arc-runners-ryzen-role"))
+		if !reflect.DeepEqual(got, readOnly) {
+			t.Fatalf("manageMaxRunners %v: runner rules %v, want only %v", manage, got, readOnly)
+		}
+	}
+	a := testGateAgentArgs()
+	a.ListenerNamespace = sp("listeners")
+	a.RunnerNamespaces = []string{"arc-runners-ryzen", "arc-runners-acme"}
+	a.ManageMaxRunners = bp(true)
+	m := runGateAgent(t, a)
+	// list to read the ceiling annotation, patch to write the live value: nothing else, not
+	// update or delete, and not the runner sets in any other namespace.
+	want := append(readOnly, "actions.github.com/autoscalingrunnersets:list,patch")
+	for _, ns := range a.RunnerNamespaces {
+		if got := grants(t, m.find(t, rbacPrefix+"Role", "-runner-"+ns+"-role")); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s rules %v, want %v", ns, got, want)
+		}
+	}
+	for _, kind := range []string{"Role", "ClusterRole"} {
+		for _, r := range m.all {
+			if r.typ != rbacPrefix+kind || strings.Contains(r.name, "-runner-") {
+				continue
+			}
+			for _, g := range grants(t, r) {
+				if strings.Contains(g, "autoscalingrunnersets") {
+					t.Errorf("%s %s grants %s outside the runner namespaces", kind, r.name, g)
+				}
+			}
+		}
+	}
+}

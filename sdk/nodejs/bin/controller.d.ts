@@ -23,6 +23,10 @@ export declare class Controller extends pulumi.ComponentResource {
  * The set of arguments for constructing a Controller resource.
  */
 export interface ControllerArgs {
+    /**
+     * Create the namespace. Default true. False uses an existing namespace as it is: it must exist. Setting false on a Controller that created its namespace deletes that namespace and everything in it.
+     */
+    createNamespace?: boolean;
     devicePluginImage?: string;
     /**
      * Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.
@@ -33,6 +37,10 @@ export interface ControllerArgs {
      */
     listenerMetrics?: boolean;
     /**
+     * Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.
+     */
+    monitoring?: pulumi.Input<inputs.ControllerMonitoringArgs | undefined>;
+    /**
      * Where the controller runs. Default arc-systems.
      */
     namespace?: string;
@@ -40,6 +48,14 @@ export interface ControllerArgs {
      * Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.
      */
     prePull?: pulumi.Input<inputs.PrePullArgs | undefined>;
+    /**
+     * The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.
+     */
+    priorityClassName?: string;
+    /**
+     * The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.
+     */
+    resources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
     /**
      * The ARC chart version. Default 0.15.1.
      */

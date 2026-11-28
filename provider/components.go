@@ -2,6 +2,8 @@ package githubrunners
 
 import (
 	"encoding/json"
+	"errors"
+	"strconv"
 
 	github "github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi-go-provider/infer"
@@ -23,6 +25,9 @@ const arcCharts = "oci://ghcr.io/actions/actions-runner-controller-charts"
 // namespaces carrying it.
 const poolNamespaceLabel = "github-runners.antimatter.studios/pool"
 
+// poolNamespacePrefix and a poolId name a Pool's namespace.
+const poolNamespacePrefix = "arc-runners-"
+
 // DefaultDevicePluginImage is squat/generic-device-plugin, pinned by digest, which offers host
 // devices as schedulable resources named devic.es/<name>.
 const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc84958301f054bf72d9753a7a2c9af3d6642a9844b34d1171b3f2cdb4a15f6"
@@ -32,11 +37,37 @@ const DefaultDevicePluginImage = "ghcr.io/squat/generic-device-plugin@sha256:8dc
 // ControllerArgs are a Controller's inputs: one per cluster.
 type ControllerArgs struct {
 	Namespace         *string       `pulumi:"namespace,optional"`
+	CreateNamespace   *bool         `pulumi:"createNamespace,optional"`
 	Version           *string       `pulumi:"version,optional"`
 	ListenerMetrics   *bool         `pulumi:"listenerMetrics,optional"`
 	Devices           []DeviceOffer `pulumi:"devices,optional"`
 	DevicePluginImage *string       `pulumi:"devicePluginImage,optional"`
 	PrePull           *PrePull      `pulumi:"prePull,optional"`
+
+	PriorityClassName *string             `pulumi:"priorityClassName,optional"`
+	Resources         *ContainerResources `pulumi:"resources,optional"`
+
+	Monitoring *ControllerMonitoring `pulumi:"monitoring,optional"`
+}
+
+// ContainerResources are one container's requests and limits.
+type ContainerResources struct {
+	CPURequest    *string `pulumi:"cpuRequest,optional"`
+	MemoryRequest *string `pulumi:"memoryRequest,optional"`
+	CPULimit      *string `pulumi:"cpuLimit,optional"`
+	MemoryLimit   *string `pulumi:"memoryLimit,optional"`
+}
+
+// values is the Kubernetes resources block holding what is set, and nothing else.
+func (r ContainerResources) values() map[string]any {
+	out := map[string]any{}
+	if req := quantities(r.CPURequest, r.MemoryRequest); len(req) > 0 {
+		out["requests"] = req
+	}
+	if lim := quantities(r.CPULimit, r.MemoryLimit); len(lim) > 0 {
+		out["limits"] = lim
+	}
+	return out
 }
 
 // DeviceOffer is a host device offered to pods as the resource devic.es/<name>.
@@ -48,10 +79,21 @@ type DeviceOffer struct {
 
 func (a *ControllerArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.Namespace, "Where the controller runs. Default arc-systems.")
+	an.Describe(&a.CreateNamespace, "Create the namespace. Default true. False uses an existing namespace as it is: it must exist. Setting false on a Controller that created its namespace deletes that namespace and everything in it.")
 	an.Describe(&a.Version, "The ARC chart version. Default "+DefaultARCVersion+".")
 	an.Describe(&a.ListenerMetrics, "Serve the listeners' metrics on :8080/metrics, which the runner-gate reads. Default true.")
 	an.Describe(&a.Devices, "Host devices offered to runner pods, e.g. {name: fuse, paths: [/dev/fuse]} as devic.es/fuse.")
+	an.Describe(&a.Monitoring, "Scraping, alerts, a dashboard and a metrics NetworkPolicy. Off unless set; setting it also serves the controller's own metrics on :8080/metrics.")
 	an.Describe(&a.PrePull, "Keep runner images on every node with a DaemonSet, so pods scaled from zero do not wait for them to pull. Off unless set; {} pre-pulls the default runner and podman images.")
+	an.Describe(&a.PriorityClassName, "The controller manager pod's PriorityClass, e.g. a high one so runners cannot starve it. Default: none. The class must exist. The listeners' is each Pool's listenerPriorityClassName.")
+	an.Describe(&a.Resources, "The controller manager container's requests and limits. Set, it replaces the default block whole (requests 100m CPU and 128Mi, limits 500m and 512Mi), so a limit left out is no limit.")
+}
+
+func (r *ContainerResources) Annotate(an infer.Annotator) {
+	an.Describe(&r.CPURequest, "CPU request, e.g. 50m.")
+	an.Describe(&r.MemoryRequest, "Memory request, e.g. 128Mi.")
+	an.Describe(&r.CPULimit, "CPU limit. Default: none.")
+	an.Describe(&r.MemoryLimit, "Memory limit. Default: none.")
 }
 
 // Controller is ARC's controller, and the device plugins runner pods take devices from.
@@ -73,9 +115,24 @@ func controllerValues(a ControllerArgs) map[string]any {
 			"limits":   map[string]any{"cpu": "500m", "memory": "512Mi"},
 		},
 	}
+	if a.Resources != nil {
+		v["resources"] = a.Resources.values()
+	}
+	if class := orDefault(a.PriorityClassName, ""); class != "" {
+		v["priorityClassName"] = class
+	}
 	if a.ListenerMetrics == nil || *a.ListenerMetrics {
-		// The listener metrics feed the runner-gate; the controller's own stay off.
-		v["metrics"] = map[string]any{"controllerManagerAddr": "0", "listenerAddr": ":8080", "listenerEndpoint": "/metrics"}
+		// The listener metrics feed the runner-gate. The controller's own are for monitoring, which
+		// reads whether each listener is running from them, and stay off without it.
+		controllerAddr := "0"
+		addr := ":" + strconv.Itoa(metricsPort)
+		if a.Monitoring != nil {
+			controllerAddr = addr
+		}
+		v["metrics"] = map[string]any{"controllerManagerAddr": controllerAddr, "listenerAddr": addr, "listenerEndpoint": metricsPath}
+	}
+	if m := a.Monitoring; m != nil && m.ScrapeAnnotations != nil && *m.ScrapeAnnotations {
+		v["podAnnotations"] = scrapeAnnotations()
 	}
 	return v
 }
@@ -96,18 +153,30 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 			return nil, err
 		}
 	}
+	if a.Resources != nil && len(a.Resources.values()) == 0 {
+		return nil, errors.New("controller: resources sets no request or limit; leave it out to keep the defaults")
+	}
+	if err := checkMonitoring(a); err != nil {
+		return nil, err
+	}
 	c := &Controller{}
 	if err := ctx.RegisterComponentResource("github-runners:index:Controller", name, c, opts...); err != nil {
 		return nil, err
 	}
 	child := pulumi.Parent(c)
 	namespace := orDefault(a.Namespace, "arc-systems")
-	ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
-		Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(namespace)},
-	}, child)
-	if err != nil {
-		return nil, err
+	// What the namespace's contents wait for: nothing when something else owns it.
+	var namespaceDeps []pulumi.Resource
+	if a.CreateNamespace == nil || *a.CreateNamespace {
+		ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(namespace)},
+		}, child)
+		if err != nil {
+			return nil, err
+		}
+		namespaceDeps = []pulumi.Resource{ns}
 	}
+	inNS := pulumi.DependsOn(namespaceDeps)
 	// A Helm release, not a rendered chart: Helm installs the CRDs before the controller, so a fresh
 	// install does not crash-loop on "no matches for kind EphemeralRunner".
 	release, err := helmv3.NewRelease(ctx, name+"-controller", &helmv3.ReleaseArgs{
@@ -117,7 +186,7 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 		Namespace:       pulumi.String(namespace),
 		CreateNamespace: pulumi.Bool(false),
 		Values:          pulumi.ToMap(controllerValues(a)),
-	}, child, pulumi.DependsOn([]pulumi.Resource{ns}))
+	}, child, inNS)
 	if err != nil {
 		return nil, err
 	}
@@ -159,13 +228,18 @@ func NewController(ctx *pulumi.Context, name string, a ControllerArgs, opts ...p
 					},
 				},
 			},
-		}, child, pulumi.DependsOn([]pulumi.Resource{ns}))
+		}, child, inNS)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if a.PrePull != nil {
-		if _, err := newPrePull(ctx, name, namespace, *a.PrePull, child, pulumi.DependsOn([]pulumi.Resource{ns})); err != nil {
+		if _, err := newPrePull(ctx, name, namespace, *a.PrePull, child, inNS); err != nil {
+			return nil, err
+		}
+	}
+	if a.Monitoring != nil {
+		if err := newMonitoring(ctx, name, namespace, *a.Monitoring, child, inNS); err != nil {
 			return nil, err
 		}
 	}
@@ -200,7 +274,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		return nil, err
 	}
 	child := pulumi.Parent(pool)
-	namespace := "arc-runners-" + a.ID
+	namespace := poolNamespacePrefix + a.ID
 	ns, err := corev1.NewNamespace(ctx, name+"-ns", &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:   pulumi.String(namespace),
@@ -235,7 +309,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	if a.Hook != nil {
 		hook = *a.Hook
 	}
-	files, err := hookFiles(hook)
+	files, err := hookFiles(hook, a.GateClaim != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +330,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	deps := []pulumi.Resource{ns, secret, hooks, podman}
 
 	if a.NetworkPolicy != nil {
-		spec, err := toNetworkPolicySpec(networkPolicySpec(*a.NetworkPolicy))
+		spec, err := toNetworkPolicySpec(networkPolicySpec(poolNetworkPolicy(a)))
 		if err != nil {
 			return nil, err
 		}
@@ -299,6 +373,14 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		deps = append(deps, group)
 	}
 
+	releaseOpts := []pulumi.ResourceOption{child, pulumi.DependsOn(deps)}
+	if agentOwnsMaxRunners(a) {
+		// The agent owns the live maxRunners. Pulumi keeps the value it created the release with, so
+		// Helm renders the same maxRunners on every upgrade; Helm patches a custom resource with a
+		// merge patch of the old render against the new one, so an unchanged field is left out and
+		// the agent's live value stands.
+		releaseOpts = append(releaseOpts, pulumi.IgnoreChanges([]string{maxRunnersValuePath}))
+	}
 	release, err := helmv3.NewRelease(ctx, name+"-scale-set", &helmv3.ReleaseArgs{
 		Name:            pulumi.String(a.ScaleSetName),
 		Chart:           pulumi.String(arcCharts + "/gha-runner-scale-set"),
@@ -306,7 +388,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		Namespace:       pulumi.String(namespace),
 		CreateNamespace: pulumi.Bool(false),
 		Values:          pulumi.ToMap(scaleSetValues(a, secretName, runnerGroup)),
-	}, child, pulumi.DependsOn(deps))
+	}, releaseOpts...)
 	if err != nil {
 		return nil, err
 	}

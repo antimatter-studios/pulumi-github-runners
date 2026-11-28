@@ -61,6 +61,10 @@ export interface PoolArgs {
     ephemeralStorageLimit?: string;
     ephemeralStorageRequest?: string;
     /**
+     * Claim each job's runner-gate reservation through the cluster's gate agent, after the fork check and before hook.script. A gate that cannot be reached lets the job run; an expired reservation fails it. Off unless set.
+     */
+    gateClaim?: pulumi.Input<inputs.PoolGateClaimArgs | undefined>;
+    /**
      * What runs before every job's first step.
      */
     hook?: pulumi.Input<inputs.PoolHookArgs | undefined>;
@@ -69,9 +73,25 @@ export interface PoolArgs {
      */
     image?: string;
     /**
-     * Jobs at once. Default 2.
+     * The PriorityClass of the pool's listener pod, which ARC's controller runs to take the pool's jobs, e.g. a high one so runners cannot starve it. Default: none. The class must exist.
+     */
+    listenerPriorityClassName?: string;
+    /**
+     * The listener container's requests and limits. Default: none.
+     */
+    listenerResources?: pulumi.Input<inputs.ContainerResourcesArgs | undefined>;
+    /**
+     * Put prometheus.io/scrape, port and path annotations on the pool's listener pod, for a scraper that discovers pods by them. Default false. Needs the Controller's listener metrics.
+     */
+    listenerScrapeAnnotations?: boolean;
+    /**
+     * Jobs at once. Default 2. With maxRunnersAgent enabled, the ceiling the agent may raise the pool to.
      */
     maxRunners?: number;
+    /**
+     * Let the runner-gate agent set the live maxRunners from the cluster's load, up to maxRunners. Off unless enabled.
+     */
+    maxRunnersAgent?: pulumi.Input<inputs.PoolMaxRunnersAgentArgs | undefined>;
     /**
      * The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.
      */

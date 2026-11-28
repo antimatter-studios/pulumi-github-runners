@@ -55,11 +55,15 @@ class Controller extends pulumi.ComponentResource {
         let resourceInputs = {};
         opts = opts || {};
         if (!opts.id) {
+            resourceInputs["createNamespace"] = args?.createNamespace;
             resourceInputs["devicePluginImage"] = args?.devicePluginImage;
             resourceInputs["devices"] = args?.devices;
             resourceInputs["listenerMetrics"] = args?.listenerMetrics;
+            resourceInputs["monitoring"] = args?.monitoring;
             resourceInputs["namespace"] = args?.namespace;
             resourceInputs["prePull"] = args?.prePull;
+            resourceInputs["priorityClassName"] = args?.priorityClassName;
+            resourceInputs["resources"] = args?.resources;
             resourceInputs["version"] = args?.version;
         }
         else {

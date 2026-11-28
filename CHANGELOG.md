@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- `Controller.createNamespace`: set `false` to install into a namespace that already exists, which
+  pulumi-kubernetes refuses to create. Default `true`. Setting it on a Controller that created its
+  namespace deletes that namespace and everything in it.
+- `Controller.priorityClassName` and `Controller.resources` for the controller manager pod, and
+  `Pool.listenerPriorityClassName` and `Pool.listenerResources` for a pool's listener pod, so runners
+  cannot starve them. All unset by default. `Controller.resources` replaces the controller's default
+  requests and limits whole.
+- `Pool.gateClaim` (`{agentNamespace}` or `{url}`): the plugin ships the runner-gate claim script,
+  runs it after the fork check and before `hook.script`, and sets `RUNNER_GATE_URL`. It fails open
+  when the gate cannot be reached. Pools no longer need their own copy of the script.
+- `Controller.monitoring`: opt-in wiring for a scraper (#13): a `PodMonitor`, a `PrometheusRule`
+  alerting on listeners that are not running or missing and on jobs queued without a runner, a
+  Grafana dashboard ConfigMap, scrape annotations on the controller pod, and a NetworkPolicy that
+  admits only the listed scrapers and the GateAgent to the metrics port. Setting it also serves the
+  controller's own metrics. Off by default.
+- `Pool.listenerScrapeAnnotations`: Prometheus scrape annotations on the pool's listener pod. Off
+  by default.
+- `Pool.maxRunnersAgent`: the runner-gate agent owns the pool's live `maxRunners`. `maxRunners`
+  becomes the ceiling, published as the annotation `runners.antimatter.studios/max-runners-ceiling`;
+  Pulumi creates the scale set at `floor` and then ignores the live field. Off by default.
+- `GateAgent.manageMaxRunners`: grants the agent `list` and `patch` on `autoscalingrunnersets` in its
+  runner namespaces only. Off by default.
 - `Pool.slots`: each runner pod requests and limits one `runners.antimatter.studios/slot` (or
   `slots.resourceName`) on its runner container, so runners are placed only on nodes whose
   published slots have room. Off by default. Nodes advertise no slots until the runner-gate agent

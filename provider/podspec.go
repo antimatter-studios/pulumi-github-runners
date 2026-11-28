@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -103,12 +104,16 @@ JS
 `
 
 // jobStartedScript is the hook the runner calls: the fork check first, when the pool asks for it,
-// then the pool's own script. Either failing fails the job.
-func jobStartedScript(rejectForks bool, custom bool) string {
+// then the runner-gate claim, then the pool's own script. Any of them failing fails the job.
+func jobStartedScript(rejectForks, claim, custom bool) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/bash\nset -euo pipefail\n")
 	if rejectForks {
 		b.WriteString(hooksDir + "/reject-forks.sh\n")
+	}
+	// After the fork check, so a refused job claims nothing.
+	if claim {
+		b.WriteString(hooksDir + "/" + gateClaimFile + "\n")
 	}
 	if custom {
 		b.WriteString(hooksDir + "/custom.sh\n")
@@ -116,11 +121,11 @@ func jobStartedScript(rejectForks bool, custom bool) string {
 	return b.String()
 }
 
-// hookFiles is the ConfigMap the hook directory is mounted from.
-func hookFiles(h PoolHook) (map[string]string, error) {
+// hookFiles is the ConfigMap the hook directory is mounted from. claim adds the runner-gate claim.
+func hookFiles(h PoolHook, claim bool) (map[string]string, error) {
 	files := map[string]string{}
 	for name, content := range h.Files {
-		if name == jobStartedHook || name == "reject-forks.sh" || name == "custom.sh" || !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(name) {
+		if name == jobStartedHook || name == "reject-forks.sh" || name == "custom.sh" || (claim && name == gateClaimFile) || !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(name) {
 			return nil, fmt.Errorf("hook file %q: a reserved or invalid name", name)
 		}
 		files[name] = content
@@ -130,10 +135,13 @@ func hookFiles(h PoolHook) (map[string]string, error) {
 	if rejectForks {
 		files["reject-forks.sh"] = rejectForksHook
 	}
+	if claim {
+		files[gateClaimFile] = gateClaimHook
+	}
 	if custom {
 		files["custom.sh"] = *h.Script
 	}
-	files[jobStartedHook] = jobStartedScript(rejectForks, custom)
+	files[jobStartedHook] = jobStartedScript(rejectForks, claim, custom)
 	return files, nil
 }
 
@@ -203,8 +211,12 @@ func podTemplate(a PoolArgs) map[string]any {
 		// podman serves the classic build API; BuildKit needs cgroups.
 		"DOCKER_BUILDKIT": "0",
 	}
+	// gateClaim owns the claim script's URL, so a leftover hook.env value cannot point it elsewhere.
+	if a.GateClaim != nil {
+		env[gateClaimEnv] = gateClaimURL(*a.GateClaim)
+	}
 	// The pool's job defaults first, then the hook's own variables, then the runner's, which a pool
-	// must not override (the hook path, Docker's socket).
+	// must not override (the hook path, Docker's socket, the claim URL).
 	merged := map[string]string{}
 	for k, v := range a.Env {
 		merged[k] = v
@@ -387,6 +399,26 @@ func quantities(cpu, memory *string) map[string]any {
 	return out
 }
 
+// maxRunnersCeilingAnnotation carries a pool's maxRunners on its AutoscalingRunnerSet when the
+// agent owns the live value: the most the agent may set it to.
+const maxRunnersCeilingAnnotation = "runners.antimatter.studios/max-runners-ceiling"
+
+// maxRunnersValuePath is the Helm value Pulumi stops managing once the agent owns maxRunners.
+const maxRunnersValuePath = "values.maxRunners"
+
+func agentOwnsMaxRunners(a PoolArgs) bool {
+	return a.MaxRunnersAgent != nil && a.MaxRunnersAgent.Enabled != nil && *a.MaxRunnersAgent.Enabled
+}
+
+// maxRunnersFloor is where a pool the agent owns starts: never unlimited, and never below
+// minRunners, which the chart refuses.
+func maxRunnersFloor(a PoolArgs) int {
+	if a.MaxRunnersAgent != nil && a.MaxRunnersAgent.Floor != nil {
+		return *a.MaxRunnersAgent.Floor
+	}
+	return max(1, intOr(a.MinRunners, 0))
+}
+
 // scaleSetValues are the gha-runner-scale-set chart's values for a pool.
 func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[string]any {
 	v := map[string]any{
@@ -397,10 +429,51 @@ func scaleSetValues(a PoolArgs, secretName string, runnerGroup string) map[strin
 		"maxRunners":         intOr(a.MaxRunners, 2),
 		"template":           podTemplate(a),
 	}
+	if agentOwnsMaxRunners(a) {
+		// The agent writes the live value; this one is only the start, and NewPool tells Pulumi to
+		// ignore later changes to it. maxRunners is published as the ceiling, as an annotation the
+		// chart puts on the AutoscalingRunnerSet alone.
+		v["maxRunners"] = maxRunnersFloor(a)
+		v["resourceMeta"] = map[string]any{"autoscalingRunnerSet": map[string]any{
+			"annotations": map[string]any{maxRunnersCeilingAnnotation: strconv.Itoa(intOr(a.MaxRunners, 2))},
+		}}
+	}
 	if runnerGroup != "" {
 		v["runnerGroup"] = runnerGroup
 	}
+	if t := listenerTemplate(a); t != nil {
+		v["listenerTemplate"] = t
+	}
 	return v
+}
+
+// listenerTemplate is what the pool's listener pod adds to ARC's own, or nil to leave it alone.
+func listenerTemplate(a PoolArgs) map[string]any {
+	class := orDefault(a.ListenerPriorityClassName, "")
+	scrape := a.ListenerScrapeAnnotations != nil && *a.ListenerScrapeAnnotations
+	if class == "" && a.ListenerResources == nil && !scrape {
+		return nil
+	}
+	// ARC merges this container into its own by name. The CRD requires the list, even with nothing
+	// to add to the container.
+	listener := map[string]any{"name": "listener"}
+	if a.ListenerResources != nil {
+		listener["resources"] = a.ListenerResources.values()
+	}
+	spec := map[string]any{
+		"containers": []any{listener},
+		// ARC copies this from the template even when unset, which would drop the listener's own 60 s
+		// to Kubernetes' 30 s.
+		"terminationGracePeriodSeconds": listenerGracePeriodSeconds,
+	}
+	if class != "" {
+		spec["priorityClassName"] = class
+	}
+	t := map[string]any{"spec": spec}
+	if scrape {
+		t["metadata"] = map[string]any{"annotations": scrapeAnnotations()}
+	}
+	return t
 }
 
 func intOr(v *int, d int) int {
@@ -435,16 +508,29 @@ func checkPool(a PoolArgs) error {
 	if maxR < 1 || maxR < minR {
 		return fmt.Errorf("pool %s: maxRunners must be at least 1 and at least minRunners", a.ID)
 	}
+	if agentOwnsMaxRunners(a) {
+		if floor := maxRunnersFloor(a); floor < minR || floor > maxR {
+			return fmt.Errorf("pool %s: maxRunnersAgent.floor %d must be between minRunners (%d) and maxRunners (%d)", a.ID, floor, minR, maxR)
+		}
+	}
 	if (a.App == nil) == (a.Token == nil) {
 		return fmt.Errorf("pool %s: give exactly one of app (a GitHub App, recommended) or token (a PAT)", a.ID)
 	}
 	if a.RunnerGroup != nil && orgOf(a.ConfigURL) == "" {
 		return fmt.Errorf("pool %s: a runner group needs an organisation configUrl", a.ID)
 	}
-	if a.Hook != nil {
-		if _, err := hookFiles(*a.Hook); err != nil {
+	if a.GateClaim != nil {
+		if err := checkGateClaim(*a.GateClaim); err != nil {
 			return fmt.Errorf("pool %s: %w", a.ID, err)
 		}
+	}
+	if a.Hook != nil {
+		if _, err := hookFiles(*a.Hook, a.GateClaim != nil); err != nil {
+			return fmt.Errorf("pool %s: %w", a.ID, err)
+		}
+	}
+	if a.ListenerResources != nil && len(a.ListenerResources.values()) == 0 {
+		return fmt.Errorf("pool %s: listenerResources sets no request or limit; leave it out for none", a.ID)
 	}
 	if slot := slotResource(a); slot != "" {
 		// kubernetes.io names are the cluster's own resources (cpu, memory); a slot there would

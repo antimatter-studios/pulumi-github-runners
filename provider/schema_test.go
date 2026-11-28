@@ -53,9 +53,9 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 	if agent.Properties["claimUrl"].Type != "string" {
 		t.Error("GateAgent schema must expose a string claimUrl")
 	}
-	// The load-aware capacity options are opt-in: a stack that does not set them keeps working.
+	// Newer options are optional: a stack that does not set them keeps working.
 	pool := spec.Resources["github-runners:index:Pool"]
-	for resource, inputs := range map[string][]string{"Pool": {"slots"}, "GateAgent": {"manageSlots"}} {
+	for resource, inputs := range map[string][]string{"Controller": {"createNamespace"}, "Pool": {"slots", "gateClaim", "maxRunnersAgent"}, "GateAgent": {"manageSlots", "manageMaxRunners"}} {
 		r := spec.Resources["github-runners:index:"+resource]
 		for _, name := range inputs {
 			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
@@ -63,9 +63,67 @@ func TestSchemaNamesThePackageAndItsResources(t *testing.T) {
 			}
 		}
 	}
+	if got := spec.Resources["github-runners:index:Controller"].InputProperties["createNamespace"].Type; got != "boolean" {
+		t.Errorf("Controller createNamespace schema type = %q", got)
+	}
+	// Monitoring is opt-in too.
+	controller := spec.Resources["github-runners:index:Controller"]
+	for name, r := range map[string]schema.ResourceSpec{"monitoring": controller, "listenerScrapeAnnotations": pool} {
+		if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
+			t.Errorf("schema must offer %s as an optional input", name)
+		}
+	}
+	monitoring := spec.Types[strings.TrimPrefix(controller.InputProperties["monitoring"].Ref, "#/types/")]
+	if len(monitoring.Required) != 0 {
+		t.Errorf("every monitoring option must be optional: %v", monitoring.Required)
+	}
+	for _, name := range []string{"podMonitor", "alerts", "dashboard", "networkPolicy", "scrapeAnnotations"} {
+		if _, ok := monitoring.Properties[name]; !ok {
+			t.Errorf("Controller monitoring lacks %s", name)
+		}
+	}
 	slots := spec.Types[strings.TrimPrefix(pool.InputProperties["slots"].Ref, "#/types/")]
 	if len(slots.Required) != 0 || slots.Properties["enabled"].Type != "boolean" || slots.Properties["resourceName"].Type != "string" {
 		t.Errorf("Pool slots type = %+v", slots)
+	}
+	claim := spec.Types[strings.TrimPrefix(pool.InputProperties["gateClaim"].Ref, "#/types/")]
+	if len(claim.Required) != 0 || claim.Properties["url"].Type != "string" || claim.Properties["agentNamespace"].Type != "string" {
+		t.Errorf("Pool gateClaim type = %+v", claim)
+	}
+}
+
+func TestSchemaOffersPriorityAndResourcesForControllerAndListeners(t *testing.T) {
+	server, err := integration.NewServer(context.Background(), Name, semver.MustParse("0.0.0"), integration.WithProvider(providerWith("http://unused")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := server.GetSchema(p.GetSchemaRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec schema.PackageSpec
+	if err := json.Unmarshal([]byte(resp.Schema), &spec); err != nil {
+		t.Fatal(err)
+	}
+	for resource, inputs := range map[string][2]string{
+		"Controller": {"priorityClassName", "resources"},
+		"Pool":       {"listenerPriorityClassName", "listenerResources"},
+	} {
+		r := spec.Resources["github-runners:index:"+resource]
+		for _, name := range inputs {
+			if _, ok := r.InputProperties[name]; !ok || slices.Contains(r.RequiredInputs, name) {
+				t.Errorf("%s schema must offer %s as an optional input", resource, name)
+			}
+		}
+		resources := spec.Types[strings.TrimPrefix(r.InputProperties[inputs[1]].Ref, "#/types/")]
+		if len(resources.Required) != 0 {
+			t.Errorf("%s %s requires %v", resource, inputs[1], resources.Required)
+		}
+		for _, field := range []string{"cpuRequest", "memoryRequest", "cpuLimit", "memoryLimit"} {
+			if resources.Properties[field].Type != "string" {
+				t.Errorf("%s %s lacks %s", resource, inputs[1], field)
+			}
+		}
 	}
 }
 

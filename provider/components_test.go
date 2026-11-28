@@ -1,6 +1,7 @@
 package githubrunners
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 type registered struct {
 	typ, name, provider string
 	inputs              resource.PropertyMap
+	ignoreChanges       []string
 }
 
 type mocks struct {
@@ -21,7 +23,7 @@ type mocks struct {
 
 func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	m.mu.Lock()
-	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs})
+	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs, args.RegisterRPC.GetIgnoreChanges()})
 	m.mu.Unlock()
 	return args.Name + "-id", args.Inputs, nil
 }
@@ -182,6 +184,49 @@ func TestPoolWithAGitHubAppAndNoGroup(t *testing.T) {
 	}
 }
 
+func TestPoolWithAGateClaim(t *testing.T) {
+	a := basePool()
+	a.Token = stringInput("t")
+	a.GateClaim = &PoolGateClaim{AgentNamespace: sp("gate")}
+	a.NetworkPolicy = &PoolNetworkPolicy{}
+	m := runPool(t, a)
+	files := m.find(t, "kubernetes:core/v1:ConfigMap", "-hooks").inputs["data"].ObjectValue()
+	if !files.HasValue("gate-claim.sh") || !strings.Contains(files[jobStartedHook].StringValue(), "/etc/arc-hooks/gate-claim.sh") {
+		t.Fatalf("hook files %v", files.StableKeys())
+	}
+	release := m.find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
+	if got := allStrings(release.inputs["values"]); !strings.Contains(got, "http://runner-gate-agent.gate.svc:8080\n") {
+		t.Fatalf("claim URL missing in %s", got)
+	}
+	policy := m.find(t, "kubernetes:networking.k8s.io/v1:NetworkPolicy", "-egress")
+	if got := allStrings(resource.NewObjectProperty(policy.inputs)); !strings.Contains(got, "gate\n") {
+		t.Fatalf("egress does not reach the gate namespace: %s", got)
+	}
+}
+
+// With the agent owning the live maxRunners, Pulumi must not manage the field after creation: a
+// deploy after the agent has raised it would otherwise put it back. The ceiling still follows the
+// declared maxRunners on every deploy.
+func TestPulumiLetsTheAgentOwnTheLiveMaxRunners(t *testing.T) {
+	a := withApp(basePool())
+	release := runPool(t, a).find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
+	if len(release.ignoreChanges) != 0 {
+		t.Fatalf("by default Pulumi owns maxRunners, but ignores %v", release.ignoreChanges)
+	}
+
+	a.MaxRunners = ip(8)
+	a.MaxRunnersAgent = &PoolMaxRunnersAgent{Enabled: bp(true)}
+	release = runPool(t, a).find(t, "kubernetes:helm.sh/v3:Release", "-scale-set")
+	if !reflect.DeepEqual(release.ignoreChanges, []string{"values.maxRunners"}) {
+		t.Fatalf("ignoreChanges %v, want only values.maxRunners", release.ignoreChanges)
+	}
+	values := release.inputs["values"].ObjectValue()
+	ceiling := values["resourceMeta"].ObjectValue()["autoscalingRunnerSet"].ObjectValue()["annotations"].ObjectValue()
+	if values["maxRunners"].NumberValue() != 1 || ceiling[maxRunnersCeilingAnnotation].StringValue() != "8" {
+		t.Fatalf("values %v: want maxRunners at the floor, 1, and the ceiling 8", values)
+	}
+}
+
 func TestAnInvalidPoolCreatesNothing(t *testing.T) {
 	a := basePool()
 	m := &mocks{}
@@ -219,6 +264,112 @@ func TestController(t *testing.T) {
 		t.Fatalf("kvm plugin %v", kvm.inputs)
 	}
 	m.find(t, "kubernetes:apps/v1:DaemonSet", "-fuse-device-plugin")
+}
+
+// A namespace something else owns is used as it is: pulumi-kubernetes refuses to create one that exists.
+func TestControllerInAnExistingNamespace(t *testing.T) {
+	m := runController(t, ControllerArgs{
+		Namespace:       sp("arc-systems"),
+		CreateNamespace: bp(false),
+		Devices:         []DeviceOffer{{Name: "fuse", Paths: []string{"/dev/fuse"}}, {Name: "kvm", Paths: []string{"/dev/kvm"}}},
+		PrePull:         &PrePull{},
+	})
+	checkControllerNamespace(t, m, "arc-systems", 0)
+
+	m = runController(t, ControllerArgs{Namespace: sp("arc"), CreateNamespace: bp(false), PrePull: &PrePull{},
+		Devices: []DeviceOffer{{Name: "fuse", Paths: []string{"/dev/fuse"}}}})
+	checkControllerNamespace(t, m, "arc", 0)
+}
+
+func TestControllerCreatesItsNamespaceUnlessToldNotTo(t *testing.T) {
+	for _, create := range []*bool{nil, bp(true)} {
+		m := runController(t, ControllerArgs{Namespace: sp("arc"), CreateNamespace: create, PrePull: &PrePull{},
+			Devices: []DeviceOffer{{Name: "fuse", Paths: []string{"/dev/fuse"}}}})
+		checkControllerNamespace(t, m, "arc", 1)
+		ns := m.find(t, "kubernetes:core/v1:Namespace", "-ns")
+		if got := ns.inputs["metadata"].ObjectValue()["name"].StringValue(); got != "arc" {
+			t.Fatalf("namespace %q", got)
+		}
+	}
+}
+
+func TestControllerAndPoolPassPriorityAndResourcesToTheirCharts(t *testing.T) {
+	m := &mocks{}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		if _, err := NewController(ctx, "arc", ControllerArgs{
+			PriorityClassName: sp("infra-critical"),
+			Resources:         &ContainerResources{MemoryRequest: sp("96Mi")},
+		}); err != nil {
+			return err
+		}
+		a := basePool()
+		a.Token = stringInput("t")
+		a.ListenerPriorityClassName = sp("infra-critical")
+		a.ListenerResources = &ContainerResources{MemoryRequest: sp("64Mi")}
+		_, err := NewPool(ctx, "acme", a)
+		return err
+	}, pulumi.WithMocks("project", "stack", m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := obj(m.find(t, "kubernetes:helm.sh/v3:Release", "-controller").inputs["values"])
+	if controller["priorityClassName"].StringValue() != "infra-critical" || obj(obj(controller["resources"])["requests"])["memory"].StringValue() != "96Mi" {
+		t.Errorf("controller values %v", controller)
+	}
+	set := obj(m.find(t, "kubernetes:helm.sh/v3:Release", "-scale-set").inputs["values"])
+	listener := allStrings(set["listenerTemplate"])
+	if !strings.Contains(listener, "infra-critical") || !strings.Contains(listener, "64Mi") {
+		t.Errorf("listener template %q", listener)
+	}
+}
+
+// An empty resources block would silently remove the controller's default requests and limits.
+func TestEmptyResourcesCreateNothing(t *testing.T) {
+	pool := basePool()
+	pool.Token = stringInput("t")
+	pool.ListenerResources = &ContainerResources{CPURequest: sp("")}
+	for want, build := range map[string]func(*pulumi.Context) error{
+		"resources": func(ctx *pulumi.Context) error {
+			_, err := NewController(ctx, "arc", ControllerArgs{Resources: &ContainerResources{}})
+			return err
+		},
+		"listenerResources": func(ctx *pulumi.Context) error {
+			_, err := NewPool(ctx, "acme", pool)
+			return err
+		},
+	} {
+		m := &mocks{}
+		err := pulumi.RunErr(build, pulumi.WithMocks("project", "stack", m))
+		if err == nil || !strings.Contains(err.Error(), want+" sets no request or limit") || len(m.all) != 0 {
+			t.Errorf("%s: err %v, %d resources", want, err, len(m.all))
+		}
+	}
+}
+
+// checkControllerNamespace: how many Namespaces were created, and that the release and every
+// DaemonSet target the namespace.
+func checkControllerNamespace(t *testing.T, m *mocks, namespace string, created int) {
+	t.Helper()
+	if n := m.count("kubernetes:core/v1:Namespace"); n != created {
+		t.Fatalf("%d Namespaces, want %d", n, created)
+	}
+	release := m.find(t, "kubernetes:helm.sh/v3:Release", "-controller")
+	if release.inputs["namespace"].StringValue() != namespace || release.inputs["createNamespace"].BoolValue() {
+		t.Fatalf("release %v", release.inputs)
+	}
+	daemonSets := 0
+	for _, r := range m.all {
+		if r.typ != "kubernetes:apps/v1:DaemonSet" {
+			continue
+		}
+		daemonSets++
+		if got := r.inputs["metadata"].ObjectValue()["namespace"].StringValue(); got != namespace {
+			t.Errorf("DaemonSet %s in namespace %q, want %q", r.name, got, namespace)
+		}
+	}
+	if daemonSets < 2 {
+		t.Fatalf("%d DaemonSets, want the device plugins and the pre-pull", daemonSets)
+	}
 }
 
 // obj is an object property, through any secret wrapping.
