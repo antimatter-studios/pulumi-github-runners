@@ -1,6 +1,7 @@
 package githubrunners
 
 import (
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"reflect"
 	"strings"
 	"testing"
@@ -73,14 +74,15 @@ func TestGateAgentPatchesScaleSetsOnlyInRunnerNamespacesWhenItManagesMaxRunners(
 		}
 	}
 	a := testGateAgentArgs()
-	a.ListenerNamespace = sp("listeners")
-	a.RunnerNamespaces = []string{"arc-runners-ryzen", "arc-runners-acme"}
+	a.ListenerNamespace = pulumi.StringPtr("listeners")
+	runnerNamespaces := []string{"arc-runners-ryzen", "arc-runners-acme"}
+	a.RunnerNamespaces = pulumi.ToStringArray(runnerNamespaces)
 	a.ManageMaxRunners = bp(true)
 	m := runGateAgent(t, a)
 	// list to read the ceiling annotation, patch to write the live value: nothing else, not
 	// update or delete, and not the runner sets in any other namespace.
 	want := append(readOnly, "actions.github.com/autoscalingrunnersets:list,patch")
-	for _, ns := range a.RunnerNamespaces {
+	for _, ns := range runnerNamespaces {
 		if got := grants(t, m.find(t, rbacPrefix+"Role", "-runner-"+ns+"-role")); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s rules %v, want %v", ns, got, want)
 		}

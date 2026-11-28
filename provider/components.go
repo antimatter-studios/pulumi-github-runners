@@ -289,10 +289,12 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	// ARC reads the pool's credential from this secret.
 	secretName := "arc-github"
 	data := pulumi.StringMap{}
-	if a.App != nil {
-		data["github_app_id"] = pulumi.String(a.App.AppID)
-		data["github_app_installation_id"] = pulumi.String(a.App.InstallationID)
-		data["github_app_private_key"] = pulumi.ToSecret(a.App.PrivateKey).(pulumi.StringOutput)
+	var app GitHubAppOutput
+	if in := a.app(); in != nil {
+		app = in.ToGitHubAppOutput()
+		data["github_app_id"] = app.AppID()
+		data["github_app_installation_id"] = app.InstallationID()
+		data["github_app_private_key"] = app.PrivateKey()
 	} else {
 		data["github_token"] = pulumi.ToSecret(a.Token).(pulumi.StringOutput)
 	}
@@ -330,7 +332,12 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	deps := []pulumi.Resource{ns, secret, hooks, podman}
 
 	if a.NetworkPolicy != nil {
-		spec, err := toNetworkPolicySpec(networkPolicySpec(poolNetworkPolicy(a)))
+		// The agent's namespace goes into the spec as an Output, so one from a Controller or a
+		// GateAgent carries its dependency and its preview unknown.
+		written := poolNetworkPolicy(a)
+		gateNamespace := stringOr(written.GateAgentNamespace, defaultGateAgentNamespace)
+		written.GateAgentNamespace = pulumi.StringPtr(gateAgentNamespacePlaceholder)
+		spec, err := toNetworkPolicySpec(networkPolicySpec(written), gateNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -347,10 +354,10 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	runnerGroup := ""
 	if g := a.RunnerGroup; g != nil {
 		providerArgs := &github.ProviderArgs{Owner: pulumi.String(orgOf(a.ConfigURL))}
-		if a.App != nil {
+		if a.app() != nil {
 			providerArgs.AppAuth = github.ProviderAppAuthArgs{
-				Id:             pulumi.String(a.App.AppID),
-				InstallationId: pulumi.String(a.App.InstallationID),
+				Id:             app.AppID(),
+				InstallationId: app.InstallationID(),
 				PemFile:        data["github_app_private_key"],
 			}
 		} else {
@@ -387,7 +394,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		Version:         pulumi.String(DefaultARCVersion),
 		Namespace:       pulumi.String(namespace),
 		CreateNamespace: pulumi.Bool(false),
-		Values:          pulumi.ToMap(scaleSetValues(a, secretName, runnerGroup)),
+		Values:          poolValues(a, secretName, runnerGroup),
 	}, releaseOpts...)
 	if err != nil {
 		return nil, err
@@ -400,9 +407,51 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	return pool, nil
 }
 
+// poolValues are the scale set's chart values. The job and hook environments and the gate claim may
+// be Outputs (the claim URL is GateAgent.claimUrl), so the values are written once they are known,
+// and a secret or a dependency among them carries through to the release.
+func poolValues(a PoolArgs, secretName, runnerGroup string) pulumi.MapOutput {
+	var hookEnv pulumi.StringMapInput
+	if a.Hook != nil {
+		hookEnv = a.Hook.Env
+	}
+	var claim PoolGateClaim
+	if a.GateClaim != nil {
+		claim = *a.GateClaim
+	}
+	return pulumi.All(stringMapOutput(a.Env), stringMapOutput(hookEnv), stringOr(claim.URL, ""), stringOr(claim.AgentNamespace, "")).ApplyT(func(in []any) map[string]any {
+		plain := a
+		plain.Env = pulumi.ToStringMap(in[0].(map[string]string))
+		if a.Hook != nil {
+			hook := *a.Hook
+			hook.Env = pulumi.ToStringMap(in[1].(map[string]string))
+			plain.Hook = &hook
+		}
+		if a.GateClaim != nil {
+			plain.GateClaim = &PoolGateClaim{URL: pulumi.StringPtr(in[2].(string)), AgentNamespace: pulumi.StringPtr(in[3].(string))}
+		}
+		return scaleSetValues(plain, secretName, runnerGroup)
+	}).(pulumi.MapOutput)
+}
+
+// gateAgentNamespacePlaceholder stands in the written spec for the GateAgent's namespace, which
+// toNetworkPolicySpec replaces with the input itself.
+const gateAgentNamespacePlaceholder = "<gate-agent-namespace>"
+
 // toNetworkPolicySpec converts the plain spec into the SDK's input type through JSON, so the spec
 // is written once, as data, and tested as data.
-func toNetworkPolicySpec(spec map[string]any) (networkingv1.NetworkPolicySpecPtrInput, error) {
+func toNetworkPolicySpec(spec map[string]any, gateNamespace pulumi.StringInput) (networkingv1.NetworkPolicySpecPtrInput, error) {
+	labels := func(m map[string]string) pulumi.StringMap {
+		out := pulumi.StringMap{}
+		for k, v := range m {
+			if v == gateAgentNamespacePlaceholder {
+				out[k] = gateNamespace
+			} else {
+				out[k] = pulumi.String(v)
+			}
+		}
+		return out
+	}
 	raw, err := json.Marshal(spec)
 	if err != nil {
 		return nil, err
@@ -438,10 +487,10 @@ func toNetworkPolicySpec(spec map[string]any) (networkingv1.NetworkPolicySpecPtr
 		for _, to := range rule.To {
 			peer := &networkingv1.NetworkPolicyPeerArgs{}
 			if to.NamespaceSelector != nil {
-				peer.NamespaceSelector = &metav1.LabelSelectorArgs{MatchLabels: pulumi.ToStringMap(to.NamespaceSelector.MatchLabels)}
+				peer.NamespaceSelector = &metav1.LabelSelectorArgs{MatchLabels: labels(to.NamespaceSelector.MatchLabels)}
 			}
 			if to.PodSelector != nil {
-				peer.PodSelector = &metav1.LabelSelectorArgs{MatchLabels: pulumi.ToStringMap(to.PodSelector.MatchLabels)}
+				peer.PodSelector = &metav1.LabelSelectorArgs{MatchLabels: labels(to.PodSelector.MatchLabels)}
 			}
 			if to.IPBlock != nil {
 				peer.IpBlock = &networkingv1.IPBlockArgs{Cidr: pulumi.String(to.IPBlock.CIDR), Except: pulumi.ToStringArray(to.IPBlock.Except)}

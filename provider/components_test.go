@@ -113,7 +113,7 @@ func TestPoolWithAPATAndAGroup(t *testing.T) {
 
 func TestPoolWithAGitHubAppAndAGroup(t *testing.T) {
 	a := basePool()
-	a.App = &GitHubApp{AppID: "123", InstallationID: "456", PrivateKey: stringInput("app-key")}
+	a.App = AppInput(GitHubAppArgs{AppID: pulumi.String("123"), InstallationID: pulumi.String("456"), PrivateKey: stringInput("app-key")})
 	a.RunnerGroup = &RunnerGroup{Name: "ryzen", Visibility: sp("selected")}
 	m := runPool(t, a)
 
@@ -163,7 +163,7 @@ func checkCredentialPlacement(t *testing.T, m *mocks, secret, gh registered, cre
 func TestPoolWithAGitHubAppAndNoGroup(t *testing.T) {
 	a := basePool()
 	a.ScaleSetName = "antimatter-vps-linux-x64"
-	a.App = &GitHubApp{AppID: "5674189", InstallationID: "180017203", PrivateKey: stringInput("-----BEGIN KEY-----")}
+	a.App = AppInput(GitHubAppArgs{AppID: pulumi.String("5674189"), InstallationID: pulumi.String("180017203"), PrivateKey: stringInput("-----BEGIN KEY-----")})
 	a.Hook = &PoolHook{RejectForks: bp(false), Script: sp("#!/bin/sh\n"), Files: map[string]string{"allowed-actors": "christhomas\n"}}
 	m := runPool(t, a)
 	data := obj(m.find(t, "kubernetes:core/v1:Secret", "-github").inputs["stringData"])
@@ -187,7 +187,7 @@ func TestPoolWithAGitHubAppAndNoGroup(t *testing.T) {
 func TestPoolWithAGateClaim(t *testing.T) {
 	a := basePool()
 	a.Token = stringInput("t")
-	a.GateClaim = &PoolGateClaim{AgentNamespace: sp("gate")}
+	a.GateClaim = &PoolGateClaim{AgentNamespace: pulumi.StringPtr("gate")}
 	a.NetworkPolicy = &PoolNetworkPolicy{}
 	m := runPool(t, a)
 	files := m.find(t, "kubernetes:core/v1:ConfigMap", "-hooks").inputs["data"].ObjectValue()
@@ -374,8 +374,12 @@ func checkControllerNamespace(t *testing.T, m *mocks, namespace string, created 
 
 // obj is an object property, through any secret wrapping.
 func obj(v resource.PropertyValue) resource.PropertyMap {
-	for v.IsSecret() {
-		v = v.SecretValue().Element
+	for v.IsSecret() || v.IsOutput() {
+		if v.IsSecret() {
+			v = v.SecretValue().Element
+		} else {
+			v = v.OutputValue().Element
+		}
 	}
 	return v.ObjectValue()
 }
@@ -388,6 +392,8 @@ func allStrings(v resource.PropertyValue) string {
 		switch {
 		case v.IsSecret():
 			walk(v.SecretValue().Element)
+		case v.IsOutput():
+			walk(v.OutputValue().Element)
 		case v.IsString():
 			b.WriteString(v.StringValue() + "\n")
 		case v.IsObject():

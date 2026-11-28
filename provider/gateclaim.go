@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // gateClaimHook claims a job's runner-gate reservation through the cluster's gate agent. It fails
@@ -25,23 +27,38 @@ const (
 
 var namespacePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
-// gateClaimURL is the base URL the claim script asks.
+// gateClaimURL is the base URL the claim script asks, from inputs that are known: poolValues writes
+// the values once they are.
 func gateClaimURL(c PoolGateClaim) string {
-	if u := orDefault(c.URL, ""); u != "" {
+	if u := orDefault(knownStringPtr(c.URL), ""); u != "" {
 		return strings.TrimSuffix(u, "/")
 	}
-	return gateAgentClaimURL(orDefault(c.AgentNamespace, defaultGateAgentNamespace))
+	return gateAgentClaimURL(orDefault(knownStringPtr(c.AgentNamespace), defaultGateAgentNamespace))
+}
+
+// givenString reports whether an input is set to something: a value that is not empty, or one a
+// preview does not know yet.
+func givenString(in pulumi.StringPtrInput) bool {
+	if in == nil {
+		return false
+	}
+	v, ok := known[*string](in.ToStringPtrOutput())
+	return !ok || orDefault(v, "") != ""
 }
 
 func checkGateClaim(c PoolGateClaim) error {
-	raw, namespace := orDefault(c.URL, ""), orDefault(c.AgentNamespace, "")
-	if (raw == "") == (namespace == "") {
+	if givenString(c.URL) == givenString(c.AgentNamespace) {
 		return fmt.Errorf("gateClaim: give exactly one of url or agentNamespace")
 	}
-	if namespace != "" {
-		if !namespacePattern.MatchString(namespace) {
+	// A value a preview does not know yet is checked when it is known, on the update.
+	if givenString(c.AgentNamespace) {
+		if namespace := orDefault(knownStringPtr(c.AgentNamespace), ""); namespace != "" && !namespacePattern.MatchString(namespace) {
 			return fmt.Errorf("gateClaim.agentNamespace %q must be a namespace name", namespace)
 		}
+		return nil
+	}
+	raw := orDefault(knownStringPtr(c.URL), "")
+	if raw == "" {
 		return nil
 	}
 	u, err := url.Parse(raw)
@@ -55,7 +72,7 @@ func checkGateClaim(c PoolGateClaim) error {
 // gateClaim.agentNamespace unless the policy names a namespace itself. Only for a pool with one.
 func poolNetworkPolicy(a PoolArgs) PoolNetworkPolicy {
 	n := *a.NetworkPolicy
-	if orDefault(n.GateAgentNamespace, "") == "" && a.GateClaim != nil {
+	if !givenString(n.GateAgentNamespace) && a.GateClaim != nil {
 		n.GateAgentNamespace = a.GateClaim.AgentNamespace
 	}
 	return n

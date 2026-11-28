@@ -255,7 +255,7 @@ func TestMonitoringDashboard(t *testing.T) {
 
 func TestMonitoringDashboardNamespaceAndLabels(t *testing.T) {
 	m := runController(t, ControllerArgs{Monitoring: &ControllerMonitoring{Dashboard: &MonitoringDashboard{
-		Namespace: sp("monitoring"), Labels: map[string]string{"grafana_dashboard": "yes", "team": "ci"},
+		Namespace: pulumi.StringPtr("monitoring"), Labels: map[string]string{"grafana_dashboard": "yes", "team": "ci"},
 	}}})
 	meta := obj(m.find(t, testConfigMapType, "-dashboard").inputs["metadata"])
 	labels := obj(meta["labels"])
@@ -269,11 +269,11 @@ func TestMonitoringDashboardNamespaceAndLabels(t *testing.T) {
 func TestMonitoringNetworkPolicyAdmitsTheScraperAndTheGateAgent(t *testing.T) {
 	m := &mocks{}
 	agent := testGateAgentArgs()
-	agent.Namespace = sp("gate")
+	agent.Namespace = pulumi.StringPtr("gate")
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		if _, err := NewController(ctx, "arc", ControllerArgs{Monitoring: &ControllerMonitoring{
 			NetworkPolicy: &MonitoringNetworkPolicy{
-				GateAgentNamespace: sp("gate"),
+				GateAgentNamespace: pulumi.StringPtr("gate"),
 				Allow: []MetricsSource{{
 					NamespaceLabels: map[string]string{"kubernetes.io/metadata.name": "monitoring"},
 					PodLabels:       map[string]string{"app.kubernetes.io/name": "prometheus"},

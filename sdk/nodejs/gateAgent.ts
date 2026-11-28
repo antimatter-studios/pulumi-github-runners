@@ -83,15 +83,15 @@ export interface GateAgentArgs {
     /**
      * The cluster name registered with the public runner-gate, e.g. homelab.
      */
-    cluster: string;
+    cluster: pulumi.Input<string>;
     /**
      * The public runner-gate URL. Defaults to https://runner-gate.antimatter-studios.com.
      */
-    gateUrl?: string;
+    gateUrl?: pulumi.Input<string | undefined>;
     /**
      * The agent image, pinned to a 16-hex tag: git.antimatter-studios.com/antimatter-studios/antimatter-vps-gate-webservice:<tag>.
      */
-    image: string;
+    image: pulumi.Input<string>;
     /**
      * Registry credentials for the agent image's pull Secret.
      */
@@ -103,7 +103,7 @@ export interface GateAgentArgs {
     /**
      * Existing namespace of the ARC listener pods. Defaults to arc-systems.
      */
-    listenerNamespace?: string;
+    listenerNamespace?: pulumi.Input<string | undefined>;
     /**
      * Let the agent read and patch the AutoscalingRunnerSets in runnerNamespaces, so it can set each pool's live maxRunners under its ceiling. Default false; granted in runnerNamespaces only.
      */
@@ -115,11 +115,11 @@ export interface GateAgentArgs {
     /**
      * Existing namespace in which to deploy the agent. Defaults to arc-systems.
      */
-    namespace?: string;
+    namespace?: pulumi.Input<string | undefined>;
     /**
      * Who may reach the agent's port 8080. By default only pods in namespaces labelled github-runners.antimatter.studios/pool, which every Pool's namespace is.
      */
-    networkPolicy?: pulumi.Input<inputs.GateAgentNetworkPolicyArgs | undefined>;
+    networkPolicy?: inputs.GateAgentNetworkPolicyArgs;
     /**
      * Existing runner namespaces in which the agent can list pods, pod metrics and ephemeral runners.
      */

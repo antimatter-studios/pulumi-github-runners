@@ -30,25 +30,43 @@ const (
 
 var gateAgentImageTag = regexp.MustCompile(`^[0-9a-fA-F]{16}$`)
 
+// checkGateAgent refuses what can be refused now. An input a preview does not know yet is checked
+// when it is known, on the update.
 func checkGateAgent(a GateAgentArgs) error {
-	if strings.TrimSpace(a.Cluster) == "" {
+	if a.Cluster == nil {
+		return errors.New("gate agent: cluster is required")
+	}
+	if cluster, ok := known[string](a.Cluster); ok && strings.TrimSpace(cluster) == "" {
 		return errors.New("gate agent: cluster is required")
 	}
 	if a.Token == nil {
 		return errors.New("gate agent: token is required")
 	}
-	if tag, ok := strings.CutPrefix(a.Image, gateAgentImageRepository+":"); !ok || !gateAgentImageTag.MatchString(tag) {
+	if a.Image == nil {
 		return fmt.Errorf("gate agent: image must be %s:<16-hex tag>", gateAgentImageRepository)
 	}
-	if len(a.RunnerNamespaces) == 0 {
-		return errors.New("gate agent: runnerNamespaces must contain at least one namespace")
-	}
-	for _, namespace := range a.RunnerNamespaces {
-		if strings.TrimSpace(namespace) == "" {
-			return errors.New("gate agent: runnerNamespaces must not contain an empty namespace")
+	if image, ok := known[string](a.Image); ok {
+		if tag, ok := strings.CutPrefix(image, gateAgentImageRepository+":"); !ok || !gateAgentImageTag.MatchString(tag) {
+			return fmt.Errorf("gate agent: image must be %s:<16-hex tag>", gateAgentImageRepository)
 		}
 	}
-	if strings.TrimSpace(a.ImagePull.Username) == "" || a.ImagePull.Password == nil {
+	if a.RunnerNamespaces == nil {
+		return errors.New("gate agent: runnerNamespaces must contain at least one namespace")
+	}
+	if namespaces, ok := known[[]string](a.RunnerNamespaces); ok {
+		if len(namespaces) == 0 {
+			return errors.New("gate agent: runnerNamespaces must contain at least one namespace")
+		}
+		for _, namespace := range namespaces {
+			if strings.TrimSpace(namespace) == "" {
+				return errors.New("gate agent: runnerNamespaces must not contain an empty namespace")
+			}
+		}
+	}
+	if a.ImagePull == nil {
+		return errors.New("gate agent: imagePull.username and imagePull.password are required")
+	}
+	if pull, ok := known[GateAgentImagePull](a.ImagePull); ok && (strings.TrimSpace(pull.Username) == "" || pull.Password == "") {
 		return errors.New("gate agent: imagePull.username and imagePull.password are required")
 	}
 	if a.NetworkPolicy != nil {
@@ -72,15 +90,12 @@ func gateAgentClaimURL(namespace string) string {
 	return fmt.Sprintf("http://%s.%s.svc:%d", gateAgentName, namespace, gateAgentPort)
 }
 
-func gateAgentMetadata(name, namespace string) *metav1.ObjectMetaArgs {
-	meta := &metav1.ObjectMetaArgs{Name: pulumi.String(name)}
-	if namespace != "" {
-		meta.Namespace = pulumi.String(namespace)
-	}
-	return meta
+// gateAgentMetadata names an object; a nil namespace is a cluster-scoped one.
+func gateAgentMetadata(name string, namespace pulumi.StringInput) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{Name: pulumi.String(name), Namespace: namespace}
 }
 
-func gateAgentTokenSecret(namespace string, token pulumi.StringInput) *corev1.SecretArgs {
+func gateAgentTokenSecret(namespace pulumi.StringInput, token pulumi.StringInput) *corev1.SecretArgs {
 	return &corev1.SecretArgs{
 		Metadata: gateAgentMetadata(gateAgentName, namespace),
 		Type:     pulumi.String("Opaque"),
@@ -98,11 +113,11 @@ func gateAgentDockerConfig(registry, username, password string) (string, error) 
 	return string(raw), err
 }
 
-func gateAgentImagePullSecret(namespace string, a GateAgentImagePull) *corev1.SecretArgs {
-	registry := orDefault(a.Registry, defaultGateAgentRegistry)
-	config := pulumi.ToSecret(a.Password).(pulumi.StringOutput).ApplyT(func(password string) (string, error) {
-		return gateAgentDockerConfig(registry, a.Username, password)
-	}).(pulumi.StringOutput)
+func gateAgentImagePullSecret(namespace pulumi.StringInput, pull GateAgentImagePullInput) *corev1.SecretArgs {
+	// The whole object, so credentials that arrive as one secret Output work as well as separate fields.
+	config := pulumi.ToSecret(pull.ToGateAgentImagePullOutput().ApplyT(func(p GateAgentImagePull) (string, error) {
+		return gateAgentDockerConfig(orDefault(p.Registry, defaultGateAgentRegistry), p.Username, p.Password)
+	})).(pulumi.StringOutput)
 	return &corev1.SecretArgs{
 		Metadata:   gateAgentMetadata(gateAgentPullSecretName, namespace),
 		Type:       pulumi.String("kubernetes.io/dockerconfigjson"),
@@ -110,12 +125,12 @@ func gateAgentImagePullSecret(namespace string, a GateAgentImagePull) *corev1.Se
 	}
 }
 
-func gateAgentDeployment(a GateAgentArgs, namespace string) *appsv1.DeploymentArgs {
+func gateAgentDeployment(a GateAgentArgs, namespace pulumi.StringInput) *appsv1.DeploymentArgs {
 	labels := gateAgentPodLabels()
-	listenerNamespace := orDefault(a.ListenerNamespace, defaultGateAgentNamespace)
+	listenerNamespace := stringOr(a.ListenerNamespace, defaultGateAgentNamespace)
 	env := corev1.EnvVarArray{
-		&corev1.EnvVarArgs{Name: pulumi.String("GATE_AGENT_URL"), Value: pulumi.String(orDefault(a.GateURL, defaultGateAgentURL))},
-		&corev1.EnvVarArgs{Name: pulumi.String("GATE_AGENT_CLUSTER"), Value: pulumi.String(a.Cluster)},
+		&corev1.EnvVarArgs{Name: pulumi.String("GATE_AGENT_URL"), Value: stringOr(a.GateURL, defaultGateAgentURL)},
+		&corev1.EnvVarArgs{Name: pulumi.String("GATE_AGENT_CLUSTER"), Value: a.Cluster},
 		&corev1.EnvVarArgs{
 			Name: pulumi.String("GATE_AGENT_TOKEN"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
@@ -125,7 +140,7 @@ func gateAgentDeployment(a GateAgentArgs, namespace string) *appsv1.DeploymentAr
 				},
 			},
 		},
-		&corev1.EnvVarArgs{Name: pulumi.String("LISTENER_NAMESPACE"), Value: pulumi.String(listenerNamespace)},
+		&corev1.EnvVarArgs{Name: pulumi.String("LISTENER_NAMESPACE"), Value: listenerNamespace},
 		&corev1.EnvVarArgs{Name: pulumi.String("METRICS_PORT"), Value: pulumi.String(strconv.Itoa(gateAgentPort))},
 	}
 	if interval := orDefault(a.Interval, ""); interval != "" {
@@ -149,7 +164,7 @@ func gateAgentDeployment(a GateAgentArgs, namespace string) *appsv1.DeploymentAr
 					},
 					Containers: corev1.ContainerArray{&corev1.ContainerArgs{
 						Name:  pulumi.String("agent"),
-						Image: pulumi.String(a.Image),
+						Image: a.Image,
 						Args:  pulumi.ToStringArray([]string{"agent"}),
 						Env:   env,
 						Ports: corev1.ContainerPortArray{
@@ -173,7 +188,7 @@ func gateAgentDeployment(a GateAgentArgs, namespace string) *appsv1.DeploymentAr
 	}
 }
 
-func gateAgentService(namespace string) *corev1.ServiceArgs {
+func gateAgentService(namespace pulumi.StringInput) *corev1.ServiceArgs {
 	return &corev1.ServiceArgs{
 		Metadata: gateAgentMetadata(gateAgentName, namespace),
 		Spec: &corev1.ServiceSpecArgs{
@@ -189,7 +204,7 @@ func gateAgentService(namespace string) *corev1.ServiceArgs {
 // gateAgentNetworkPolicy admits runner namespaces, and the listed extra sources, to the agent's
 // port. The agent forwards a claim with its own token, so whoever reaches /claim acts with it. The
 // policy is ingress only: the agent still reaches the gate and the API server.
-func gateAgentNetworkPolicy(a GateAgentArgs, namespace string) *networkingv1.NetworkPolicyArgs {
+func gateAgentNetworkPolicy(a GateAgentArgs, namespace pulumi.StringInput) *networkingv1.NetworkPolicyArgs {
 	// By the label every Pool puts on its namespace, so a new pool needs no change here.
 	from := networkingv1.NetworkPolicyPeerArray{&networkingv1.NetworkPolicyPeerArgs{
 		NamespaceSelector: &metav1.LabelSelectorArgs{
@@ -230,10 +245,16 @@ type gateAgentRoleBinding struct {
 	suffix  string
 	role    *rbacv1.RoleArgs
 	binding *rbacv1.RoleBindingArgs
+	// deps are what the namespace came from, such as the Pool that created it.
+	deps []pulumi.Resource
 }
 
-func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace string) []gateAgentRoleBinding {
-	newPair := func(suffix, name, namespace string, rules rbacv1.PolicyRuleArray) gateAgentRoleBinding {
+// gateAgentNamespacedRoles are the agent's Role and RoleBinding in the listener namespace and in
+// each runner namespace. One pair per runner namespace, named after it, so the namespaces must be
+// known: a preview that does not know them yet (their Pools are new) leaves the runner pairs out,
+// and the update, which always knows them, creates them.
+func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace pulumi.StringInput, runners resolved[[]string]) []gateAgentRoleBinding {
+	newPair := func(suffix, name string, namespace pulumi.StringInput, rules rbacv1.PolicyRuleArray) gateAgentRoleBinding {
 		return gateAgentRoleBinding{
 			suffix: suffix,
 			role: &rbacv1.RoleArgs{
@@ -247,18 +268,21 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace string) []gateAgen
 			},
 		}
 	}
-	listenerNamespace := orDefault(a.ListenerNamespace, defaultGateAgentNamespace)
 	pairs := []gateAgentRoleBinding{
-		newPair("listener", gateAgentName+"-listener", listenerNamespace, rbacv1.PolicyRuleArray{
+		newPair("listener", gateAgentName+"-listener", stringOr(a.ListenerNamespace, defaultGateAgentNamespace), rbacv1.PolicyRuleArray{
 			gateAgentListRule("", "pods"),
 		}),
 	}
 	seen := map[string]bool{}
-	for _, namespace := range a.RunnerNamespaces {
+	for _, namespace := range runners.Value {
 		if seen[namespace] {
 			continue
 		}
 		seen[namespace] = true
+		var ns pulumi.StringInput = pulumi.String(namespace)
+		if runners.Secret {
+			ns = pulumi.ToSecret(ns).(pulumi.StringOutput)
+		}
 		rules := rbacv1.PolicyRuleArray{
 			gateAgentListRule("", "pods"),
 			gateAgentListRule("metrics.k8s.io", "pods"),
@@ -273,12 +297,14 @@ func gateAgentNamespacedRoles(a GateAgentArgs, agentNamespace string) []gateAgen
 				Verbs:     pulumi.ToStringArray([]string{"list", "patch"}),
 			})
 		}
-		pairs = append(pairs, newPair("runner-"+namespace, gateAgentName+"-runner", namespace, rules))
+		pair := newPair("runner-"+namespace, gateAgentName+"-runner", ns, rules)
+		pair.deps = runners.Deps
+		pairs = append(pairs, pair)
 	}
 	return pairs
 }
 
-func gateAgentClusterRole(a GateAgentArgs, namespace string) (*rbacv1.ClusterRoleArgs, *rbacv1.ClusterRoleBindingArgs) {
+func gateAgentClusterRole(a GateAgentArgs, namespace pulumi.StringInput) (*rbacv1.ClusterRoleArgs, *rbacv1.ClusterRoleBindingArgs) {
 	rules := rbacv1.PolicyRuleArray{
 		gateAgentListRule("", "nodes"),
 		gateAgentListRule("metrics.k8s.io", "nodes"),
@@ -294,10 +320,10 @@ func gateAgentClusterRole(a GateAgentArgs, namespace string) (*rbacv1.ClusterRol
 		})
 	}
 	return &rbacv1.ClusterRoleArgs{
-		Metadata: gateAgentMetadata(gateAgentName, ""),
+		Metadata: gateAgentMetadata(gateAgentName, nil),
 		Rules:    rules,
 	}, &rbacv1.ClusterRoleBindingArgs{
-		Metadata: gateAgentMetadata(gateAgentName, ""),
+		Metadata: gateAgentMetadata(gateAgentName, nil),
 		RoleRef:  gateAgentRoleRef("ClusterRole", gateAgentName),
 		Subjects: gateAgentSubjects(namespace),
 	}
@@ -319,10 +345,10 @@ func gateAgentRoleRef(kind, name string) *rbacv1.RoleRefArgs {
 	}
 }
 
-func gateAgentSubjects(namespace string) rbacv1.SubjectArray {
+func gateAgentSubjects(namespace pulumi.StringInput) rbacv1.SubjectArray {
 	return rbacv1.SubjectArray{&rbacv1.SubjectArgs{
 		Kind:      pulumi.String("ServiceAccount"),
 		Name:      pulumi.String(gateAgentName),
-		Namespace: pulumi.String(namespace),
+		Namespace: namespace,
 	}}
 }

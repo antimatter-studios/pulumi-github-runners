@@ -38,7 +38,7 @@ func matchLabels(selector, labels resource.PropertyMap) bool {
 
 func TestGateAgentAdmitsOnlyRunnerNamespacesByDefault(t *testing.T) {
 	a := testGateAgentArgs()
-	a.Namespace = sp("gate")
+	a.Namespace = pulumi.StringPtr("gate")
 	m := runGateAgent(t, a)
 
 	policy := m.find(t, testNetworkPolicyType, "-ingress")
@@ -79,10 +79,10 @@ func TestGateAgentAdmitsOnlyRunnerNamespacesByDefault(t *testing.T) {
 // selects what the other really creates.
 func TestPoolAndGateAgentPoliciesSelectEachOther(t *testing.T) {
 	a := testGateAgentArgs()
-	a.Namespace = sp("gate")
+	a.Namespace = pulumi.StringPtr("gate")
 	pool := basePool()
 	pool.Token = stringInput("runner-pat")
-	pool.NetworkPolicy = &PoolNetworkPolicy{GateAgentNamespace: sp("gate")}
+	pool.NetworkPolicy = &PoolNetworkPolicy{GateAgentNamespace: pulumi.StringPtr("gate")}
 	m := &mocks{}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		if _, err := NewPool(ctx, "acme", pool); err != nil {
@@ -191,7 +191,7 @@ func TestPoolNetworkPolicyReachesTheGateAgent(t *testing.T) {
 		namespace string
 	}{
 		{"default", PoolNetworkPolicy{}, "arc-systems"},
-		{"custom namespace", PoolNetworkPolicy{GateAgentNamespace: sp("gate")}, "gate"},
+		{"custom namespace", PoolNetworkPolicy{GateAgentNamespace: pulumi.StringPtr("gate")}, "gate"},
 		// An ipBlock does not match pods under every network plugin, so the rule stays.
 		{"private ranges open", PoolNetworkPolicy{BlockPrivate: bp(false)}, "arc-systems"},
 	} {

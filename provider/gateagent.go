@@ -1,6 +1,8 @@
 package githubrunners
 
 import (
+	"errors"
+
 	"github.com/pulumi/pulumi-go-provider/infer"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -31,7 +33,17 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 		return nil, err
 	}
 	child := pulumi.Parent(agent)
-	namespace := orDefault(a.Namespace, defaultGateAgentNamespace)
+	namespace := stringOr(a.Namespace, defaultGateAgentNamespace)
+	runners, err := resolve[[]string](ctx.Context(), a.RunnerNamespaces)
+	if err != nil {
+		return nil, err
+	}
+	if !runners.Known {
+		if !ctx.DryRun() {
+			return nil, errors.New("gate agent: runnerNamespaces is not known")
+		}
+		_ = ctx.Log.Info("runnerNamespaces is not known yet: the runner namespaces' Roles are created on the update", &pulumi.LogArgs{Resource: agent})
+	}
 
 	token, err := corev1.NewSecret(ctx, name+"-token", gateAgentTokenSecret(namespace, a.Token), child)
 	if err != nil {
@@ -48,13 +60,13 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 		return nil, err
 	}
 	deps := []pulumi.Resource{token, pullSecret, account}
-	for _, pair := range gateAgentNamespacedRoles(a, namespace) {
-		role, err := rbacv1.NewRole(ctx, name+"-"+pair.suffix+"-role", pair.role, child)
+	for _, pair := range gateAgentNamespacedRoles(a, namespace, runners) {
+		role, err := rbacv1.NewRole(ctx, name+"-"+pair.suffix+"-role", pair.role, child, pulumi.DependsOn(pair.deps))
 		if err != nil {
 			return nil, err
 		}
 		binding, err := rbacv1.NewRoleBinding(ctx, name+"-"+pair.suffix+"-binding", pair.binding,
-			child, pulumi.DependsOn([]pulumi.Resource{role, account}))
+			child, pulumi.DependsOn(append([]pulumi.Resource{role, account}, pair.deps...)))
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +100,7 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 	if _, err := corev1.NewService(ctx, name+"-service", gateAgentService(namespace), child); err != nil {
 		return nil, err
 	}
-	agent.ClaimURL = pulumi.String(gateAgentClaimURL(namespace)).ToStringOutput()
+	agent.ClaimURL = namespace.ApplyT(gateAgentClaimURL).(pulumi.StringOutput)
 	if err := ctx.RegisterResourceOutputs(agent, pulumi.Map{"claimUrl": agent.ClaimURL}); err != nil {
 		return nil, err
 	}

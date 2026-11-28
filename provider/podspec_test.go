@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 func sp(s string) *string { return &s }
@@ -370,7 +372,7 @@ func TestTheHookIsMountedAndCalledBeforeEveryJob(t *testing.T) {
 		t.Fatal("hook not configured")
 	}
 	a := basePool()
-	a.Hook = &PoolHook{Env: map[string]string{"RUNNER_GATE_URL": "http://runner-gate-agent.arc-systems.svc:8080"}}
+	a.Hook = &PoolHook{Env: pulumi.StringMap{"RUNNER_GATE_URL": pulumi.String("http://runner-gate-agent.arc-systems.svc:8080")}}
 	if env(t, container(t, podTemplate(a), "runner"))["RUNNER_GATE_URL"] == "" {
 		t.Fatal("hook env not passed to the runner")
 	}
@@ -403,7 +405,7 @@ func TestHookFiles(t *testing.T) {
 
 func TestCheckPool(t *testing.T) {
 	ok := basePool()
-	ok.App = &GitHubApp{AppID: "1", InstallationID: "2", PrivateKey: stringInput("k")}
+	ok.App = AppInput(GitHubAppArgs{AppID: pulumi.String("1"), InstallationID: pulumi.String("2"), PrivateKey: stringInput("k")})
 	if err := checkPool(ok); err != nil {
 		t.Fatal(err)
 	}
@@ -476,15 +478,15 @@ func TestGateClaimSetsTheClaimURL(t *testing.T) {
 		claim PoolGateClaim
 		want  string
 	}{
-		"url":               {PoolGateClaim{URL: sp("http://gate.example:9000")}, "http://gate.example:9000"},
-		"url with a slash":  {PoolGateClaim{URL: sp("http://gate.example:9000/")}, "http://gate.example:9000"},
-		"agent namespace":   {PoolGateClaim{AgentNamespace: sp("arc-systems")}, "http://runner-gate-agent.arc-systems.svc:8080"},
-		"another namespace": {PoolGateClaim{AgentNamespace: sp("gate")}, "http://runner-gate-agent.gate.svc:8080"},
+		"url":               {PoolGateClaim{URL: pulumi.StringPtr("http://gate.example:9000")}, "http://gate.example:9000"},
+		"url with a slash":  {PoolGateClaim{URL: pulumi.StringPtr("http://gate.example:9000/")}, "http://gate.example:9000"},
+		"agent namespace":   {PoolGateClaim{AgentNamespace: pulumi.StringPtr("arc-systems")}, "http://runner-gate-agent.arc-systems.svc:8080"},
+		"another namespace": {PoolGateClaim{AgentNamespace: pulumi.StringPtr("gate")}, "http://runner-gate-agent.gate.svc:8080"},
 	} {
 		a := basePool()
 		a.GateClaim = &c.claim
-		a.Env = map[string]string{"RUNNER_GATE_URL": "http://pool-env"}
-		a.Hook = &PoolHook{Env: map[string]string{"RUNNER_GATE_URL": "http://hook-env"}}
+		a.Env = pulumi.StringMap{"RUNNER_GATE_URL": pulumi.String("http://pool-env")}
+		a.Hook = &PoolHook{Env: pulumi.StringMap{"RUNNER_GATE_URL": pulumi.String("http://hook-env")}}
 		if got := env(t, container(t, podTemplate(a), "runner"))["RUNNER_GATE_URL"]; got != c.want {
 			t.Errorf("%s: RUNNER_GATE_URL %q, want %q", name, got, c.want)
 		}
@@ -525,17 +527,17 @@ func TestGateClaimNamespaceIsTheNetworkPolicysDefault(t *testing.T) {
 	a := basePool()
 	a.NetworkPolicy = &PoolNetworkPolicy{}
 	if got := poolNetworkPolicy(a).GateAgentNamespace; got != nil {
-		t.Fatalf("no gateClaim: %q", *got)
+		t.Fatalf("no gateClaim: %v", got)
 	}
-	a.GateClaim = &PoolGateClaim{AgentNamespace: sp("gate")}
-	if got := poolNetworkPolicy(a).GateAgentNamespace; got == nil || *got != "gate" {
+	a.GateClaim = &PoolGateClaim{AgentNamespace: pulumi.StringPtr("gate")}
+	if got := knownStringPtr(poolNetworkPolicy(a).GateAgentNamespace); got == nil || *got != "gate" {
 		t.Fatalf("gate agent namespace %v", got)
 	}
 	if a.NetworkPolicy.GateAgentNamespace != nil {
 		t.Fatal("the caller's args were changed")
 	}
-	a.NetworkPolicy.GateAgentNamespace = sp("elsewhere")
-	if got := poolNetworkPolicy(a).GateAgentNamespace; got == nil || *got != "elsewhere" {
+	a.NetworkPolicy.GateAgentNamespace = pulumi.StringPtr("elsewhere")
+	if got := knownStringPtr(poolNetworkPolicy(a).GateAgentNamespace); got == nil || *got != "elsewhere" {
 		t.Fatalf("an explicit namespace wins: %v", got)
 	}
 }
@@ -544,8 +546,8 @@ func TestCheckGateClaim(t *testing.T) {
 	ok := basePool()
 	ok.Token = stringInput("t")
 	for name, claim := range map[string]PoolGateClaim{
-		"url":             {URL: sp("https://gate.example")},
-		"agent namespace": {AgentNamespace: sp("arc-systems")},
+		"url":             {URL: pulumi.StringPtr("https://gate.example")},
+		"agent namespace": {AgentNamespace: pulumi.StringPtr("arc-systems")},
 	} {
 		a := ok
 		a.GateClaim = &claim
@@ -555,12 +557,12 @@ func TestCheckGateClaim(t *testing.T) {
 	}
 	for name, claim := range map[string]PoolGateClaim{
 		"neither":            {},
-		"empty strings":      {URL: sp(""), AgentNamespace: sp("")},
-		"both":               {URL: sp("http://gate:8080"), AgentNamespace: sp("arc-systems")},
-		"url without host":   {URL: sp("http://")},
-		"url without scheme": {URL: sp("gate:8080")},
-		"url with a query":   {URL: sp("http://gate:8080?x=1")},
-		"bad namespace":      {AgentNamespace: sp("Arc.Systems")},
+		"empty strings":      {URL: pulumi.StringPtr(""), AgentNamespace: pulumi.StringPtr("")},
+		"both":               {URL: pulumi.StringPtr("http://gate:8080"), AgentNamespace: pulumi.StringPtr("arc-systems")},
+		"url without host":   {URL: pulumi.StringPtr("http://")},
+		"url without scheme": {URL: pulumi.StringPtr("gate:8080")},
+		"url with a query":   {URL: pulumi.StringPtr("http://gate:8080?x=1")},
+		"bad namespace":      {AgentNamespace: pulumi.StringPtr("Arc.Systems")},
 	} {
 		a := ok
 		a.GateClaim = &claim
@@ -569,7 +571,7 @@ func TestCheckGateClaim(t *testing.T) {
 		}
 	}
 	reserved := ok
-	reserved.GateClaim = &PoolGateClaim{AgentNamespace: sp("arc-systems")}
+	reserved.GateClaim = &PoolGateClaim{AgentNamespace: pulumi.StringPtr("arc-systems")}
 	reserved.Hook = &PoolHook{Files: map[string]string{"gate-claim.sh": ""}}
 	if err := checkPool(reserved); err == nil {
 		t.Error("a hook file over the claim script: accepted")
@@ -632,7 +634,7 @@ func TestTheAgentStartsAPoolAtTheFloorUnderItsCeiling(t *testing.T) {
 }
 
 func withApp(a PoolArgs) PoolArgs {
-	a.App = &GitHubApp{AppID: "1", InstallationID: "2", PrivateKey: stringInput("k")}
+	a.App = AppInput(GitHubAppArgs{AppID: pulumi.String("1"), InstallationID: pulumi.String("2"), PrivateKey: stringInput("k")})
 	return a
 }
 
@@ -646,7 +648,7 @@ func TestNetworkPolicy(t *testing.T) {
 	if get(t, agent, "to", 0, "podSelector", "matchLabels", "app") != "runner-gate-agent" || get(t, agent, "ports", 0, "port") != float64(8080) {
 		t.Fatalf("exception %v", agent)
 	}
-	if _, err := toNetworkPolicySpec(spec); err != nil {
+	if _, err := toNetworkPolicySpec(spec, pulumi.String(defaultGateAgentNamespace)); err != nil {
 		t.Fatal(err)
 	}
 	open := networkPolicySpec(PoolNetworkPolicy{BlockPrivate: bp(false)})
@@ -687,7 +689,7 @@ func gnuSedPath(t *testing.T, dir string) string {
 // A pool's job environment reaches every job, and cannot override what the runner itself depends on.
 func TestPoolEnvIsEveryJobsDefault(t *testing.T) {
 	a := basePool()
-	a.Env = map[string]string{"GOMAXPROCS": "2", "FLTH_RESOURCE_PROFILE": "low", "DOCKER_HOST": "tcp://elsewhere"}
+	a.Env = pulumi.ToStringMap(map[string]string{"GOMAXPROCS": "2", "FLTH_RESOURCE_PROFILE": "low", "DOCKER_HOST": "tcp://elsewhere"})
 	e := env(t, container(t, podTemplate(a), "runner"))
 	if e["GOMAXPROCS"] != "2" || e["FLTH_RESOURCE_PROFILE"] != "low" {
 		t.Fatalf("env %v", e)

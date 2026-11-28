@@ -218,11 +218,11 @@ func podTemplate(a PoolArgs) map[string]any {
 	// The pool's job defaults first, then the hook's own variables, then the runner's, which a pool
 	// must not override (the hook path, Docker's socket, the claim URL).
 	merged := map[string]string{}
-	for k, v := range a.Env {
+	for k, v := range knownStringMap(a.Env) {
 		merged[k] = v
 	}
 	if a.Hook != nil {
-		for k, v := range a.Hook.Env {
+		for k, v := range knownStringMap(a.Hook.Env) {
 			merged[k] = v
 		}
 	}
@@ -513,7 +513,7 @@ func checkPool(a PoolArgs) error {
 			return fmt.Errorf("pool %s: maxRunnersAgent.floor %d must be between minRunners (%d) and maxRunners (%d)", a.ID, floor, minR, maxR)
 		}
 	}
-	if (a.App == nil) == (a.Token == nil) {
+	if (a.app() == nil) == (a.Token == nil) {
 		return fmt.Errorf("pool %s: give exactly one of app (a GitHub App, recommended) or token (a PAT)", a.ID)
 	}
 	if a.RunnerGroup != nil && orgOf(a.ConfigURL) == "" {

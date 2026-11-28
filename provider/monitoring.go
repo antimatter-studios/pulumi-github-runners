@@ -70,14 +70,14 @@ type MonitoringAlerts struct {
 
 // MonitoringDashboard is a ConfigMap Grafana's dashboard sidecar loads.
 type MonitoringDashboard struct {
-	Namespace *string           `pulumi:"namespace,optional"`
-	Labels    map[string]string `pulumi:"labels,optional"`
+	Namespace pulumi.StringPtrInput `pulumi:"namespace,optional"`
+	Labels    map[string]string     `pulumi:"labels,optional"`
 }
 
 // MonitoringNetworkPolicy restricts who reaches the metrics ports.
 type MonitoringNetworkPolicy struct {
-	Allow              []MetricsSource `pulumi:"allow,optional"`
-	GateAgentNamespace *string         `pulumi:"gateAgentNamespace,optional"`
+	Allow              []MetricsSource       `pulumi:"allow,optional"`
+	GateAgentNamespace pulumi.StringPtrInput `pulumi:"gateAgentNamespace,optional"`
 }
 
 // MetricsSource is one scraper: pods matching the selectors.
@@ -300,12 +300,15 @@ func dashboardJSON() (string, error) {
 func metricsNetworkPolicy(p MonitoringNetworkPolicy, namespace string) *networkingv1.NetworkPolicyArgs {
 	// Selecting a pod shuts out every source not listed, so the GateAgent, which reads the
 	// listeners' metrics, is always listed.
-	sources := append([]MetricsSource{{
-		NamespaceLabels: map[string]string{"kubernetes.io/metadata.name": orDefault(p.GateAgentNamespace, defaultGateAgentNamespace)},
-		PodLabels:       map[string]string{"app": gateAgentName},
-	}}, p.Allow...)
-	from := networkingv1.NetworkPolicyPeerArray{}
-	for _, source := range sources {
+	// Its namespace goes in as an Output, so one from a Controller or a GateAgent carries its
+	// dependency and its preview unknown.
+	from := networkingv1.NetworkPolicyPeerArray{&networkingv1.NetworkPolicyPeerArgs{
+		NamespaceSelector: &metav1.LabelSelectorArgs{MatchLabels: pulumi.StringMap{
+			"kubernetes.io/metadata.name": stringOr(p.GateAgentNamespace, defaultGateAgentNamespace),
+		}},
+		PodSelector: &metav1.LabelSelectorArgs{MatchLabels: gateAgentPodLabels()},
+	}}
+	for _, source := range p.Allow {
 		peer := &networkingv1.NetworkPolicyPeerArgs{}
 		if len(source.NamespaceLabels) > 0 {
 			peer.NamespaceSelector = &metav1.LabelSelectorArgs{MatchLabels: pulumi.ToStringMap(source.NamespaceLabels)}
@@ -372,7 +375,7 @@ func newMonitoring(ctx *pulumi.Context, name, namespace string, m ControllerMoni
 		args := &corev1.ConfigMapArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("arc-runners-dashboard"),
-				Namespace: pulumi.String(orDefault(d.Namespace, namespace)),
+				Namespace: stringOr(d.Namespace, namespace),
 				Labels:    pulumi.ToStringMap(labels),
 			},
 			Data: pulumi.StringMap{"arc-runners.json": pulumi.String(dashboard)},

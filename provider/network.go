@@ -49,7 +49,7 @@ func networkPolicySpec(n PoolNetworkPolicy) map[string]any {
 	egress = append(egress, map[string]any{
 		"to": []any{map[string]any{
 			"namespaceSelector": map[string]any{"matchLabels": map[string]any{
-				"kubernetes.io/metadata.name": orDefault(n.GateAgentNamespace, defaultGateAgentNamespace),
+				"kubernetes.io/metadata.name": orDefault(knownStringPtr(n.GateAgentNamespace), defaultGateAgentNamespace),
 			}},
 			"podSelector": map[string]any{"matchLabels": map[string]any{"app": gateAgentName}},
 		}},
