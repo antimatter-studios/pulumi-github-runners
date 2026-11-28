@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The default runner image now has Ruby (with bundler and headers) and lsof. fs-linux-test-harness
+  boots its VM through `ruby scripts/qemu-artifacts.rb`, which calls lsof, and its smoke jobs on
+  the Ryzen pools failed with `ruby: command not found` (run 46160731557). The image also gains
+  the other CLI tools GitHub's ubuntu-24.04 image has and CI scripts call without installing:
+  `python` (python-is-python3), `nc`, `ip`, `ping`, `dig`, `sqlite3`, `tree`, `bc`, `time`, `fuser`,
+  `envsubst`, the autotools, bison, flex, m4, lz4, pigz, 7z, parallel, fakeroot, pipx and
+  mikefarah's `yq`. A pool that sets its own `image` is unaffected.
+
 - Every ConfigMap and Secret the plugin names itself (a pool's `arc-github`, `arc-runner-hooks` and
   `arc-runner-podman`, the registry mirror's config, the dashboard, the gate agent's token and pull
   Secrets) is now deleted before it is replaced. pulumi-kubernetes replaces them when their data
