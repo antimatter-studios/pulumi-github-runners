@@ -17,8 +17,11 @@ import (
 // as an apt source, whose 403s failed jobs on 2026-11-27 (antimatter-vps #203). f6e4647
 // (actions-runner-image#9) adds gh, whose absence failed release jobs. 7ac1ab5
 // (actions-runner-image#10) adds udev, kmod, fdisk and acl: without udevadm, KVM jobs failed in
-// fs-linux-test-harness's ci-setup-linux.sh (rust-fs-ext4, 2026-11-28).
-const DefaultRunnerImage = "ghcr.io/antimatter-studios/actions-runner:2.338.2-7ac1ab5@sha256:1d61c406a96a45577f0d9a3acb2f50dc8c2cc04e36e47b87049f75d9999ede8f"
+// fs-linux-test-harness's ci-setup-linux.sh (rust-fs-ext4, 2026-11-28). d85760c
+// (actions-runner-image#11) adds Ruby and lsof, which the harness's VM boot calls
+// (`ruby: command not found` in fs-linux-test-harness run 46160731557), and the rest of the CLI
+// tools GitHub's ubuntu-24.04 image has and CI scripts call without installing.
+const DefaultRunnerImage = "ghcr.io/antimatter-studios/actions-runner:2.338.2-d85760c@sha256:a344f2c78b0505a91f3369743367610655de4f578a6db28c2f38479f00b0134a"
 
 // DefaultPodmanImage is the Docker-compatible API for jobs, as a sidecar.
 const DefaultPodmanImage = "quay.io/podman/stable:v6.1.3@sha256:1d280cfab8e4cdaa221229c121f681c67463fbd82ad2fa6d13fdcf91c6fc747e"
