@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `GateAgent.probe`: runs `runner-gate probe` on every node (#23), dry run by default, with its
+  `PROBE_*` settings in `probe.settings`. `probe.evict` (`off`, `dry-run` by default, `on`) is the
+  youngest-runner eviction when memory runs out (#31); `on` grants `delete` on pods in the runner
+  namespaces only.
+- **Changed:** `GateAgent.manageSlots` now grants `patch` on `nodes/status` to the probe, not the
+  agent, and turns the probe's `PROBE_SLOTS` to `apply`. It needs `probe.enabled`.
+- `GateAgent.maxRunnersMode` (`off`, `dry-run`, `apply`) and `maxRunnersSettings`: the agent's live
+  `maxRunners` (#26) from the probes' slots. `apply` needs `manageMaxRunners`, and is the default with
+  it; `dry-run` grants only `list` on the scale sets.
+
 - The default runner image now has the GitHub CLI (`gh`). Jobs that called it, release jobs among
   them, failed with `gh: command not found`. A pool that sets its own `image` is unaffected.
 - The podman sidecar removes inherited default POSIX ACLs from its storage, `/home/runner/_work`

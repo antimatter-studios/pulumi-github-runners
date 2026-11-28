@@ -203,9 +203,21 @@ check_deployed() {
   local runner_rules=("$(rule "" pods list)" "$(rule metrics.k8s.io pods list)" "$(rule actions.github.com ephemeralrunners list)")
   if [ "$manage_max_runners" = true ]; then runner_rules+=("$(rule actions.github.com autoscalingrunnersets list,patch)"); fi
   expect_rules role runner-gate-agent-runner arc-runners-it "${runner_rules[@]}"
-  local cluster_rules=("$(rule "" nodes list)" "$(rule metrics.k8s.io nodes list)")
-  if [ "$manage_slots" = true ]; then cluster_rules+=("$(rule "" nodes/status patch)"); fi
-  expect_rules clusterrole runner-gate-agent "" "${cluster_rules[@]}"
+  expect_rules clusterrole runner-gate-agent "" "$(rule "" nodes list)" "$(rule metrics.k8s.io nodes list)"
+
+  # The probe: a DaemonSet on every node, read-only but for nodes/status with manageSlots.
+  kubectl rollout status daemonset/runner-gate-probe -n arc-systems --timeout=120s >/dev/null || fail "probe DaemonSet not rolled out"
+  local slots
+  slots="$(kubectl get daemonset runner-gate-probe -n arc-systems -o json | jq -r '.spec.template.spec.containers[0].env[] | select(.name == "PROBE_SLOTS") | .value')"
+  local want_slots=dry-run
+  if [ "$manage_slots" = true ]; then want_slots=apply; fi
+  [ "$slots" = "$want_slots" ] || fail "probe PROBE_SLOTS $slots, want $want_slots"
+  pass "probe DaemonSet runs, PROBE_SLOTS=$slots"
+  expect_rules role runner-gate-probe arc-systems "$(rule "" pods list)"
+  expect_rules role runner-gate-probe arc-runners-it "$(rule "" pods list)"
+  local probe_rules=("$(rule "" nodes get)")
+  if [ "$manage_slots" = true ]; then probe_rules+=("$(rule "" nodes/status patch)"); fi
+  expect_rules clusterrole runner-gate-probe "" "${probe_rules[@]}"
 }
 
 check_gone() {
@@ -215,7 +227,7 @@ check_gone() {
   done
   pass "namespaces arc-systems and arc-runners-it are gone"
   local left
-  left="$(kubectl get clusterroles,clusterrolebindings -o name | grep -E 'runner-gate-agent|gha-rs' || true)"
+  left="$(kubectl get clusterroles,clusterrolebindings -o name | grep -E 'runner-gate-agent|runner-gate-probe|gha-rs' || true)"
   [ -z "$left" ] || fail "cluster RBAC left behind: $left"
   pass "no cluster roles or bindings left"
   # Helm never removes the CRDs a chart installed; any custom resource of theirs would be ours.

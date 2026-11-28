@@ -83,6 +83,11 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 		return nil, err
 	}
 	deps = append(deps, binding)
+	if probeEnabled(a) {
+		if err := newGateProbe(ctx, name, a, namespace, runners, pullSecret, child); err != nil {
+			return nil, err
+		}
+	}
 
 	if a.NetworkPolicy == nil || a.NetworkPolicy.Enabled == nil || *a.NetworkPolicy.Enabled {
 		policy, err := networkingv1.NewNetworkPolicy(ctx, name+"-ingress", gateAgentNetworkPolicy(a, namespace), child)

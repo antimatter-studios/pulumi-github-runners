@@ -73,6 +73,21 @@ export interface GateAgentNetworkPolicyArgs {
     enabled?: boolean;
 }
 
+export interface GateAgentProbeArgs {
+    /**
+     * Run the probe, a DaemonSet on every node. Default false. It logs its slot decisions; it publishes them only with manageSlots.
+     */
+    enabled?: boolean;
+    /**
+     * Pressure-triggered eviction of the youngest runner pod: off, dry-run (log only) or on. Default dry-run. on lets the probe delete pods in runnerNamespaces, and only there.
+     */
+    evict?: string;
+    /**
+     * The probe's other settings, PROBE_* env, e.g. {PROBE_CEILING: "8", PROBE_PSI_MEMORY_SOME_HIGH: "15"}. Defaults and meanings: antimatter-vps docs/runner-gate.md. PROBE_SLOTS and PROBE_EVICT come from manageSlots and evict.
+     */
+    settings?: {[key: string]: string};
+}
+
 export interface GateAgentSourceArgs {
     /**
      * Labels of the source's namespace. Unset, podLabels select only pods in the agent's own namespace.

@@ -40,6 +40,8 @@ new runners.GateAgent("gate", {
     imagePull: { username: "integration", password: pulumi.secret("integration-dummy-password") },
     manageSlots,
     manageMaxRunners,
+    // The probe runs the same stand-in image; it is there for its DaemonSet and RBAC.
+    probe: { enabled: true },
 }, { dependsOn: [controller, pool] });
 
 exports.poolNamespace = pool.namespace;

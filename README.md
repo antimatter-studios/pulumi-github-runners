@@ -85,11 +85,29 @@ load. The scheduler places a runner pod only on a node with a free slot; a pod w
 Pending and its job waits at GitHub. Lowering a node's count never evicts a running pod, it only
 stops new placements.
 
-The runner-gate agent publishes the count on each node, which needs `GateAgent.manageSlots: true`
-(RBAC: `patch` on `nodes/status`, nothing more). The plugin does not seed the count: a node without
-the agent advertises no slots, so a pool with slots enabled never lands there by accident. Enable
-the agent, let it publish, then enable `slots` on the pools that should follow it. Both are off by
-default.
+The GateAgent's probe publishes the count on each node, which needs `GateAgent.probe.enabled` and
+`GateAgent.manageSlots: true` (the probe's RBAC gains `patch` on `nodes/status`, nothing more). The
+plugin does not seed the count: a node without the probe advertises no slots, so a pool with slots
+enabled never lands there by accident. Enable the probe, let it publish, then enable `slots` on the
+pools that should follow it. All of it is off by default.
+
+### The node probe (load-aware capacity, #23 and #31)
+
+`GateAgent.probe: {enabled: true}` runs `runner-gate probe`, a DaemonSet (`runner-gate-probe`, in the
+agent's namespace) on every node, whatever its taints. Each probe reads its node's pressure-stall
+figures, free memory and swap, the runner pods on it and the queued jobs, and works out the node's
+runner slots, AIMD-style: a step more while everything is calm and jobs wait, a share less on a
+spike. Without `manageSlots` it only logs its decisions and serves them on `/metrics` (dry run).
+The agent reads every probe's slots and reports them to the gate (gate rule `LOAD_RULE=slots`).
+
+- `probe.evict`: `off`, `dry-run` (default; log which runner would be evicted) or `on`. When memory
+  runs out the probe deletes the youngest runner pod (a pod still starting first), one at a time,
+  before systemd-oomd or the kernel choose their own victim. `on` grants `delete` on pods in
+  `runnerNamespaces` only.
+- `probe.settings`: the other `PROBE_*` settings as strings: thresholds, floor and ceiling, increase
+  step, decrease factor, cooldowns, interval and the eviction triggers. Every setting and its default
+  is in antimatter-vps `docs/runner-gate.md` ("Node probe").
+- RBAC, its own ServiceAccount: `list pods` in the listener and runner namespaces, `get nodes`.
 
 ### Monitoring and alerts (#13)
 
@@ -160,6 +178,12 @@ The agent applies `spec.maxRunners` with server-side apply under its own field m
 (`runner-gate`). Helm last wrote the field, so the agent's first apply has to force ownership. It
 needs `GateAgent.manageMaxRunners: true`: `list` and `patch` on `autoscalingrunnersets` in
 `runnerNamespaces` only. Both are off by default, and without them Pulumi owns `maxRunners` as before.
+
+The agent follows the probes' slots, so it needs `probe.enabled`. `GateAgent.maxRunnersMode` is `off`,
+`dry-run` (log each change it would make; RBAC `list` only) or `apply` (needs `manageMaxRunners`, and is
+the default with it). `GateAgent.maxRunnersSettings` takes `AGENT_MAX_RUNNERS_FLOOR` (1),
+`AGENT_MAX_RUNNERS_STEP` (1, the most one change raises a pool) and `AGENT_MAX_RUNNERS_INTERVAL` (1m,
+the least time between two changes of a pool).
 
 ### Pool credentials
 
