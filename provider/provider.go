@@ -48,7 +48,18 @@ func options(api string) infer.Options {
 		WithLicense("MIT").
 		WithPluginDownloadURL(PluginDownloadURL).
 		// Left unset, Pulumi names the SDK @pulumi/github-runners, claiming Pulumi's own npm scope.
-		WithLanguageMap(map[string]any{"nodejs": map[string]any{"packageName": "@antimatter-studios/github-runners"}}).
+		WithLanguageMap(map[string]any{
+			"nodejs": map[string]any{"packageName": "@antimatter-studios/github-runners"},
+			// The Go SDK (sdk/go), for Go programs such as antimatter-vps; tagged sdk/go/vX.Y.Z on release.
+			"go": map[string]any{
+				"importBasePath":       "github.com/antimatter-studios/pulumi-github-runners/sdk/go",
+				"modulePath":           "github.com/antimatter-studios/pulumi-github-runners/sdk/go",
+				"rootPackageName":      "githubrunners",
+				"respectSchemaVersion": true,
+				// Components take object inputs as plain values; Go needs their Args types generated too.
+				"generateExtraInputTypes": true,
+			},
+		}).
 		WithKeywords("github", "actions", "runners", "kubernetes", "category/infrastructure").
 		BuildOptions()
 }

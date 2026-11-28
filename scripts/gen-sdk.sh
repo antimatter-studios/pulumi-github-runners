@@ -44,3 +44,15 @@ const p = JSON.parse(require("fs").readFileSync("package.json", "utf8"));
 p.main = "index.js"; p.types = "index.d.ts";
 require("fs").writeFileSync("bin/package.json", JSON.stringify(p, null, 4) + "\n");'
 )
+
+# The Go SDK, for Go programs (antimatter-vps). Its module has its own go.mod, pinned to the Pulumi SDK the
+# provider builds with; a release tags it sdk/go/vX.Y.Z.
+pulumi package gen-sdk "$bin" --language go --out "$out"
+(
+  cd "$out/go"
+  go mod init github.com/antimatter-studios/pulumi-github-runners/sdk/go
+  go mod edit -go=1.26.6 -require=github.com/pulumi/pulumi/sdk/v3@$(cd "$root/provider" && go list -m -f '{{.Version}}' github.com/pulumi/pulumi/sdk/v3)
+  go mod tidy
+)
+rm -rf "$root/sdk/go"
+mv "$out/go" "$root/sdk/go"
