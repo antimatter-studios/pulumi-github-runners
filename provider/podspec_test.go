@@ -407,6 +407,17 @@ func TestTopologySpreadIsHardAndOptional(t *testing.T) {
 	}
 }
 
+func TestNodeSelectorPinsThePoolsRunners(t *testing.T) {
+	if has(t, podTemplate(basePool()), "spec", "nodeSelector") {
+		t.Fatal("none by default")
+	}
+	a := basePool()
+	a.NodeSelector = map[string]string{"kubernetes.io/hostname": "s2"}
+	if got := get(t, podTemplate(a), "spec", "nodeSelector", "kubernetes.io/hostname"); got != "s2" {
+		t.Fatalf("got %v", got)
+	}
+}
+
 func TestDevicesComeFromDevicePluginsNotHostPaths(t *testing.T) {
 	a := basePool()
 	a.Devices = map[string]string{"devic.es/fuse": "1", "devic.es/kvm": "1"}

@@ -6,6 +6,8 @@
   `fdisk`) and acl (`setfacl`, `getfacl`), as GitHub's ubuntu-24.04 image does. KVM jobs failed in
   fs-linux-test-harness's `ci-setup-linux.sh` with `sudo: udevadm: command not found`. A pool that
   sets its own `image` is unaffected.
+- `Pool.nodeSelector`: only nodes with these labels run the pool's runners. One pool per node lets the
+  runner gate pick the node by picking the pool's label.
 
 - **Changed:** with `Pool.maxRunnersAgent`, the agent's `maxRunners` has no cap (#22). The plugin marks
   the AutoscalingRunnerSet with `runners.antimatter.studios/max-runners-agent: "true"` instead of the
