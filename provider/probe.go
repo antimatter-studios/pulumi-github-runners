@@ -166,8 +166,6 @@ func gateProbeDaemonSet(a GateAgentArgs, namespace pulumi.StringInput) *appsv1.D
 						Ports: corev1.ContainerPortArray{
 							&corev1.ContainerPortArgs{Name: pulumi.String("metrics"), ContainerPort: pulumi.Int(gateProbePort)},
 						},
-						ReadinessProbe: &corev1.ProbeArgs{HttpGet: &corev1.HTTPGetActionArgs{
-							Path: pulumi.String("/healthz"), Port: pulumi.String("metrics")}},
 						Resources: &corev1.ResourceRequirementsArgs{
 							Requests: pulumi.ToStringMap(map[string]string{"cpu": "10m", "memory": "16Mi"}),
 						},
