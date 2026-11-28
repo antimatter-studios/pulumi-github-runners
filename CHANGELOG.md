@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `Controller.registryMirror`: a pull-through cache in the cluster for public registries (docker.io,
+  ghcr.io and quay.io by default; `upstreams`), and `Pool.registryMirror` to pull through it. Each
+  runner pod's podman starts with empty storage, so every job pulled its images again, and a
+  machine's runners share one IPv4 address and Docker Hub's 100 anonymous pulls an hour. On the Ryzen
+  at 12 runners the quota ran out (`ratelimit-remaining: 0;w=3600`): podman's pull got
+  `toomanyrequests` and rest-mail's E2E jobs failed at the next step with `image not known`. With the
+  mirror each registry serves an image once, and cached pulls are faster. Anonymous only; items
+  expire `ttl` (default 720h) after they were cached; one `size` (default 50Gi) volume. Pools without
+  `registryMirror` are unchanged.
 - The default runner image now has udev (`udevadm`), kmod (`modprobe`, `lsmod`), fdisk (`sfdisk`,
   `fdisk`) and acl (`setfacl`, `getfacl`), as GitHub's ubuntu-24.04 image does. KVM jobs failed in
   fs-linux-test-harness's `ci-setup-linux.sh` with `sudo: udevadm: command not found`. A pool that

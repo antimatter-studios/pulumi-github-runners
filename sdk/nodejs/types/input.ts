@@ -227,6 +227,17 @@ export interface PoolNetworkPolicyArgs {
     gateAgentNamespace?: pulumi.Input<string | undefined>;
 }
 
+export interface PoolRegistryMirrorArgs {
+    /**
+     * The namespace of the Controller that runs the mirror. Default arc-systems.
+     */
+    namespace?: string;
+    /**
+     * Registries to pull through the mirror, by host. Default docker.io, ghcr.io, quay.io. One the mirror does not cache costs nothing but a failed lookup: podman goes to the registry itself.
+     */
+    upstreams?: string[];
+}
+
 export interface PoolSlotsArgs {
     /**
      * Request one runner slot per runner pod. Default false. Only nodes where the GateAgent (manageSlots) has published slots can run the pool's pods; until then they stay Pending and their jobs wait at GitHub.
@@ -247,6 +258,33 @@ export interface PrePullArgs {
      * The pre-pull pods' PriorityClass, e.g. a low one so they are evicted first. Default: none. The class must exist.
      */
     priorityClassName?: string;
+}
+
+export interface RegistryMirrorArgs {
+    /**
+     * The registry image, pinned by digest. Default: distribution 3.1.2 from GHCR.
+     */
+    image?: string;
+    /**
+     * The mirror pod's PriorityClass. Default: none. The class must exist.
+     */
+    priorityClassName?: string;
+    /**
+     * The cache volume's size, shared by all upstreams. Default 50Gi. Whether it is enforced is the StorageClass's business: local-path does not enforce it.
+     */
+    size?: string;
+    /**
+     * The cache volume's StorageClass. Default: the cluster's default class.
+     */
+    storageClassName?: string;
+    /**
+     * How long a cached manifest or blob lives, counted from when it was cached (a cache hit does not extend it), e.g. 720h. Default 720h. 0 keeps everything.
+     */
+    ttl?: string;
+    /**
+     * Registries to cache, by host. Default docker.io, ghcr.io, quay.io. Anonymous only: private images are not cached, and their pulls go to the upstream with the job's own credentials.
+     */
+    upstreams?: string[];
 }
 
 export interface RunnerGroupArgs {

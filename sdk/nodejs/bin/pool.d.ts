@@ -125,6 +125,10 @@ export interface PoolArgs {
      */
     priorityClassName?: string;
     /**
+     * Pull images from the mirrored registries through the Controller's registryMirror, falling back to each registry itself when the mirror cannot answer. With a networkPolicy, runners may reach the mirror's pods. Off unless set.
+     */
+    registryMirror?: inputs.PoolRegistryMirrorArgs;
+    /**
      * The organisation's runner group the runners join, created with the pool's GitHub App or PAT. Requires an organisation configUrl.
      */
     runnerGroup?: inputs.RunnerGroupArgs;

@@ -110,7 +110,8 @@ type PoolArgs struct {
 	MaxRunners *int    `pulumi:"maxRunners,optional"`
 	Image      *string `pulumi:"image,optional"`
 
-	PodmanImage *string `pulumi:"podmanImage,optional"`
+	PodmanImage    *string             `pulumi:"podmanImage,optional"`
+	RegistryMirror *PoolRegistryMirror `pulumi:"registryMirror,optional"`
 
 	CPURequest              *string       `pulumi:"cpuRequest,optional"`
 	CPULimit                *string       `pulumi:"cpuLimit,optional"`
@@ -216,6 +217,7 @@ func (a *PoolArgs) Annotate(an infer.Annotator) {
 	an.Describe(&a.MinRunners, "Idle runners kept ready. Default 0.")
 	an.Describe(&a.MaxRunners, "Jobs at once. Default 2. With maxRunnersAgent enabled, only the value a new scale set starts at: the agent then owns it, and a later change here is not applied.")
 	an.Describe(&a.Image, "The runner image, pinned by digest. Default: the antimatter actions-runner image.")
+	an.Describe(&a.RegistryMirror, "Pull images from the mirrored registries through the Controller's registryMirror, falling back to each registry itself when the mirror cannot answer. With a networkPolicy, runners may reach the mirror's pods. Off unless set.")
 	an.Describe(&a.CPULimit, "The runner container's CPU limit. Defaults to no container CPU limit. A pod-level CPU limit takes precedence.")
 	an.Describe(&a.MemoryLimit, "The runner container's memory limit. Defaults to none. A pod-level memory limit takes precedence.")
 	an.Describe(&a.DockerMemoryRequest, "The Docker sidecar's memory request. Default 128Mi. Docker builds and job services run here, so with LimitedSwap this request is also what sizes the sidecar's swap.")

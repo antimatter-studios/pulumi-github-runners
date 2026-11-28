@@ -32,6 +32,8 @@ func grants(t *testing.T, r registered) []string {
 }
 
 func TestTheProbePatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
+	// The agent's role by its whole name: "-node-role" alone also matches the probe's
+	// "homelab-probe-node-role", and which one find returned depended on registration order.
 	agentReadOnly := []string{"/nodes:list", "metrics.k8s.io/nodes:list"}
 	probeReadOnly := []string{"/nodes:get", "actions.github.com/autoscalingrunnersets:list"}
 	for _, manage := range []*bool{nil, bp(false)} {
@@ -39,7 +41,7 @@ func TestTheProbePatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
 		a.ManageSlots = manage
 		a.Probe = &GateAgentProbe{Enabled: bp(true)}
 		m := runGateAgent(t, a)
-		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-node-role")); !reflect.DeepEqual(got, agentReadOnly) {
+		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "homelab-node-role")); !reflect.DeepEqual(got, agentReadOnly) {
 			t.Fatalf("manageSlots %v: agent cluster rules %v, want only %v", manage, got, agentReadOnly)
 		}
 		if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got, probeReadOnly) {
@@ -54,7 +56,7 @@ func TestTheProbePatchesNodeStatusOnlyWhenItManagesSlots(t *testing.T) {
 	if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-probe-node-role")); !reflect.DeepEqual(got, append(probeReadOnly, "/nodes/status:patch")) {
 		t.Fatalf("probe cluster rules %v", got)
 	}
-	if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "-node-role")); !reflect.DeepEqual(got, agentReadOnly) {
+	if got := grants(t, m.find(t, rbacPrefix+"ClusterRole", "homelab-node-role")); !reflect.DeepEqual(got, agentReadOnly) {
 		t.Fatalf("agent cluster rules %v", got)
 	}
 	for _, r := range m.all {

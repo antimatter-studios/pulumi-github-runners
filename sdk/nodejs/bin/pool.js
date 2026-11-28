@@ -92,6 +92,7 @@ class Pool extends pulumi.ComponentResource {
             resourceInputs["podmanImage"] = args?.podmanImage;
             resourceInputs["poolId"] = args?.poolId;
             resourceInputs["priorityClassName"] = args?.priorityClassName;
+            resourceInputs["registryMirror"] = args?.registryMirror;
             resourceInputs["runnerGroup"] = args?.runnerGroup;
             resourceInputs["scaleSetName"] = args?.scaleSetName;
             resourceInputs["slots"] = args?.slots;

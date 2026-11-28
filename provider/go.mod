@@ -3,17 +3,18 @@ module github.com/antimatter-studios/pulumi-github-runners/provider
 go 1.26.10
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/pulumi/pulumi-github/sdk/v6 v6.15.1
 	github.com/pulumi/pulumi-go-provider v1.8.1
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.35.0
 	github.com/pulumi/pulumi/pkg/v3 v3.278.0
 	github.com/pulumi/pulumi/sdk/v3 v3.278.0
+	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect

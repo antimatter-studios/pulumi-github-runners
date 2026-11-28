@@ -16,9 +16,11 @@ The design, its rules and the order of work are in the tracking issue,
 | `Controller.createNamespace` | Default `true`. `false` installs into an existing `namespace` (it must exist) and creates no Namespace resource. Setting it on a Controller that created its namespace deletes that namespace and everything in it. |
 | `Controller.monitoring` | Optional PodMonitor, alert rules, Grafana dashboard, scrape annotations and metrics NetworkPolicy; see [Monitoring and alerts](#monitoring-and-alerts-13). |
 | `Controller.prePull` | Optional DaemonSet that keeps runner images on every node, so a pod scaled from zero does not wait for its pulls. `{}` pre-pulls the default runner and podman images; list a pool's own `image` in `images` if it sets one. Each image runs `true` once as an unprivileged init container, then the pod idles on `pause` with tiny requests and a 32Mi memory limit. `priorityClassName` is optional. |
+| `Controller.registryMirror` | Optional pull-through cache for public registries, in the controller's namespace: see [Registry mirror](#registry-mirror). |
 | `Controller.priorityClassName`, `Controller.resources` | The controller manager pod's PriorityClass and its requests and limits. See [Priority and resources](#priority-and-resources-of-arcs-own-pods). |
 | `Pool` (component) | One organisation's runners on one machine, named `<machine>-<os>-<arch>`: credentials, runner group, scale set, the rootless podman sidecar, the job-started hook and an optional NetworkPolicy. |
 | `Pool.gateClaim` | `{agentNamespace: "arc-systems"}` or `{url: "..."}`, exactly one. Every job claims its runner-gate reservation before its first step: fork check, then claim, then `hook.script`. The plugin ships the claim script and sets `RUNNER_GATE_URL` (`http://runner-gate-agent.<agentNamespace>.svc:8080`). A gate that cannot be reached lets the job run; an expired reservation fails it. Off unless set. `agentNamespace` is also the default for `networkPolicy.gateAgentNamespace`; a pool using `url` with a `networkPolicy` must make sure the policy lets its runners reach that address. |
+| `Pool.registryMirror` | `{}`, or `{namespace, upstreams}` (defaults `arc-systems` and docker.io, ghcr.io, quay.io): the podman sidecar pulls those registries' images through that Controller's `registryMirror`, and goes to each registry itself when the mirror cannot answer. With a `networkPolicy`, the runners may reach the mirror's pods. Off unless set. |
 | `ForkPrApproval` | An organisation's "Approval for running fork pull request workflows from contributors" setting. Deleting the resource leaves the setting as it is, so removing it never loosens an organisation. |
 
 ## Using it
@@ -51,6 +53,36 @@ egress is not restricted. Both policies need a network plugin that enforces Netw
 
 A pool with a `networkPolicy` always lets its runners reach the agent in `arc-systems` on port 8080.
 Set `networkPolicy.gateAgentNamespace` when the agent runs elsewhere.
+
+### Registry mirror
+
+Every runner pod's podman starts with empty image storage, so every job pulls each image it uses
+from its registry again. Docker Hub allows 100 anonymous pulls an hour per IPv4 address, which all
+of a machine's runners share; on the Ryzen at 12 runners that ran out, and jobs failed with
+`toomanyrequests`. `Controller.registryMirror` caches public images in the cluster, so each
+registry serves an image once and the runners pull it from the LAN, which is also faster (on the
+Ryzen a cached pull took a third to a half of a direct one).
+
+- **One registry container per upstream.** distribution's proxy mode takes one upstream, so the pod
+  runs one distribution 3.1.2 container per entry of `upstreams` (default docker.io, ghcr.io,
+  quay.io), each with its own config file, port and directory on the shared volume, behind its own
+  Service `registry-mirror-<host with dashes>:5000`, e.g. `registry-mirror-ghcr-io.arc-systems.svc:5000`.
+  ClusterIP only, plain HTTP.
+- **Anonymous only.** The mirror holds no upstream credentials, so it cannot hand a private image to
+  every pod in the cluster. For an image it cannot fetch anonymously it answers 404, and podman then
+  tries the registry itself, with the job's own credentials.
+- **Expiry: `ttl`, default `720h` (30 days), counted from when an item was cached.** distribution
+  3.1.2 sets an item's expiry when it fetches it from the upstream, and a cache hit does not move it
+  (`proxyBlobStore.ServeBlob` and `proxyManifestStore.Get` schedule only after a remote fetch). So it
+  is not "30 days unused": an image in constant use is fetched again once every 30 days. `0` keeps
+  everything. Tags are not cached for long either way: a pull by tag asks the upstream for the
+  tag's digest each time, which Docker Hub does not count as a pull.
+- **Size: `size`, default `50Gi`,** one PersistentVolumeClaim for all upstreams. Whether that is a
+  limit is up to the StorageClass: k3s's local-path makes a plain directory and enforces nothing.
+  `storageClassName` picks the class.
+
+Pools opt in with `Pool.registryMirror`: a `registries.conf.d` drop-in in the podman sidecar lists
+each mirrored registry with its cache as the first mirror and the registry itself as the location.
 
 ### Priority and resources of ARC's own pods
 
