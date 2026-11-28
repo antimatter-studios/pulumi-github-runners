@@ -380,7 +380,7 @@ func newMonitoring(ctx *pulumi.Context, name, namespace string, m ControllerMoni
 			},
 			Data: pulumi.StringMap{"arc-runners.json": pulumi.String(dashboard)},
 		}
-		if _, err := corev1.NewConfigMap(ctx, name+"-dashboard", args, opts...); err != nil {
+		if _, err := corev1.NewConfigMap(ctx, name+"-dashboard", args, append(opts, fixedName)...); err != nil {
 			return err
 		}
 	}

@@ -207,7 +207,7 @@ func newRegistryMirror(ctx *pulumi.Context, name, namespace string, m RegistryMi
 	config, err := corev1.NewConfigMap(ctx, name+"-"+registryMirrorName, &corev1.ConfigMapArgs{
 		Metadata: meta,
 		Data:     pulumi.ToStringMap(files),
-	}, opts...)
+	}, append(opts, fixedName)...)
 	if err != nil {
 		return err
 	}

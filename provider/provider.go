@@ -9,6 +9,7 @@ import (
 	p "github.com/pulumi/pulumi-go-provider"
 	"github.com/pulumi/pulumi-go-provider/infer"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // Name is the package name: the plugin binary is pulumi-resource-github-runners and every token
@@ -51,3 +52,10 @@ func options(api string) infer.Options {
 		WithKeywords("github", "actions", "runners", "kubernetes", "category/infrastructure").
 		BuildOptions()
 }
+
+// fixedName goes on every ConfigMap and Secret the plugin names itself. pulumi-kubernetes replaces a
+// ConfigMap or Secret whose data changes, creating the new one before deleting the old, and with a
+// fixed name the create fails: github-runners v0.6.0's new registries-mirror.conf previewed as
+// 'configmaps "arc-runner-podman" already exists' on the Ryzen. Deleting first leaves a moment without
+// the object, which a pod starting in it waits out.
+var fixedName = pulumi.DeleteBeforeReplace(true)

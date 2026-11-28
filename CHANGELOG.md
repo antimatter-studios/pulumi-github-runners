@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Every ConfigMap and Secret the plugin names itself (a pool's `arc-github`, `arc-runner-hooks` and
+  `arc-runner-podman`, the registry mirror's config, the dashboard, the gate agent's token and pull
+  Secrets) is now deleted before it is replaced. pulumi-kubernetes replaces them when their data
+  changes, and creating the replacement first failed on the fixed name: v0.6.0's new
+  `registries-mirror.conf` previewed as `configmaps "arc-runner-podman" already exists`.
+
 - `Controller.registryMirror`: a pull-through cache in the cluster for public registries (docker.io,
   ghcr.io and quay.io by default; `upstreams`), and `Pool.registryMirror` to pull through it. Each
   runner pod's podman starts with empty storage, so every job pulled its images again, and a
