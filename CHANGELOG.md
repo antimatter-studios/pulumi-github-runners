@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The default runner image now has udev (`udevadm`), kmod (`modprobe`, `lsmod`), fdisk (`sfdisk`,
+  `fdisk`) and acl (`setfacl`, `getfacl`), as GitHub's ubuntu-24.04 image does. KVM jobs failed in
+  fs-linux-test-harness's `ci-setup-linux.sh` with `sudo: udevadm: command not found`. A pool that
+  sets its own `image` is unaffected.
+
 - **Changed:** with `Pool.maxRunnersAgent`, the agent's `maxRunners` has no cap (#22). The plugin marks
   the AutoscalingRunnerSet with `runners.antimatter.studios/max-runners-agent: "true"` instead of the
   `max-runners-ceiling` annotation, and `maxRunners` is the value a new scale set starts at, not a
