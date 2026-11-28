@@ -72,6 +72,28 @@ done
 exec /usr/bin/crun "$@"
 `
 
+// stripDefaultACLsScript removes the default POSIX ACL from every directory under its arguments,
+// top-down, so a directory made after the walk passed its parent inherits nothing.
+//
+// A directory with a default ACL hands it to everything created in it, and then the kernel ignores
+// the creator's umask. On the Ryzen, k3s keeps its data (container layers and emptyDirs) under
+// /mnt/storage, whose default ACL gives other r-x only, so every file a job's containers made lost
+// other-write whatever mode was asked for. Dovecot binds its login socket 0666 for the unprivileged
+// imap-login; it came out 0664 and every IMAP client got "connect(login) ... Permission denied",
+// so rest-mail's e2e waited 180 s for a greeting that never came (2026-11-28). The VPS's disk has
+// no default ACL, so there this does nothing.
+const stripDefaultACLsScript = `#!/usr/bin/env python3
+import os
+import sys
+
+for top in sys.argv[1:]:
+    for path, _, _ in os.walk(top):
+        try:
+            os.removexattr(path, "system.posix_acl_default")
+        except OSError:
+            pass  # none set, or a filesystem without ACLs
+`
+
 // rejectForksHook refuses every job started by a pull request from a fork, before its first step.
 // The runner runs it, so nothing in the pull request can skip it; a non-zero exit fails the job.
 //
@@ -147,7 +169,7 @@ func hookFiles(h PoolHook, claim bool) (map[string]string, error) {
 }
 
 func podmanFiles() map[string]string {
-	return map[string]string{"storage.conf": podmanStorageConf, "containers.conf": podmanContainersConf, "crun": crunWrapper}
+	return map[string]string{"storage.conf": podmanStorageConf, "containers.conf": podmanContainersConf, "crun": crunWrapper, "strip-default-acls": stripDefaultACLsScript}
 }
 
 func orDefault(v *string, d string) string {
@@ -280,9 +302,12 @@ func podTemplate(a PoolArgs) map[string]any {
 		"image": orDefault(a.PodmanImage, DefaultPodmanImage),
 		// catatonit reaps the DNS server and other daemons podman leaves behind. podman schedules
 		// health checks with systemd timers, and there is no systemd here, so without the loop a
-		// services: container stays "starting" and the job never starts.
+		// services: container stays "starting" and the job never starts. Before podman: its storage
+		// and the volumes jobs bind-mount lose any inherited default ACL (stripDefaultACLsScript).
 		"command": []any{"/usr/libexec/podman/catatonit", "--", "sh", "-c",
-			"(until [ -S " + dockerSocketDir + "/docker.sock ]; do sleep 0.2; done; chmod 666 " + dockerSocketDir + "/docker.sock) & " +
+			podmanConfigDir + "/strip-default-acls /var/lib/containers /home/runner/_work /tmp" +
+				" || echo 'strip-default-acls failed: files in containers may ignore their umask' >&2; " +
+				"(until [ -S " + dockerSocketDir + "/docker.sock ]; do sleep 0.2; done; chmod 666 " + dockerSocketDir + "/docker.sock) & " +
 				"(while sleep 2; do for c in $(podman ps -q --filter health=starting --filter health=unhealthy --filter health=healthy); do podman healthcheck run \"$c\" >/dev/null 2>&1; done; done) & " +
 				"exec podman system service --time=0 unix://" + dockerSocketDir + "/docker.sock"},
 		"env": []any{
