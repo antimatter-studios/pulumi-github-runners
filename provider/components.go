@@ -314,7 +314,7 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 		Metadata:   &metav1.ObjectMetaArgs{Name: pulumi.String(secretName), Namespace: pulumi.String(namespace)},
 		Type:       pulumi.String("Opaque"),
 		StringData: data,
-	}, child, inNS)
+	}, child, inNS, fixedName)
 	if err != nil {
 		return nil, err
 	}
@@ -330,14 +330,14 @@ func NewPool(ctx *pulumi.Context, name string, a PoolArgs, opts ...pulumi.Resour
 	hooks, err := corev1.NewConfigMap(ctx, name+"-hooks", &corev1.ConfigMapArgs{
 		Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(hooksConfigMap), Namespace: pulumi.String(namespace)},
 		Data:     pulumi.ToStringMap(files),
-	}, child, inNS)
+	}, child, inNS, fixedName)
 	if err != nil {
 		return nil, err
 	}
 	podman, err := corev1.NewConfigMap(ctx, name+"-podman", &corev1.ConfigMapArgs{
 		Metadata: &metav1.ObjectMetaArgs{Name: pulumi.String(podmanConfigMap), Namespace: pulumi.String(namespace)},
 		Data:     pulumi.ToStringMap(podmanFiles(a.RegistryMirror)),
-	}, child, inNS)
+	}, child, inNS, fixedName)
 	if err != nil {
 		return nil, err
 	}

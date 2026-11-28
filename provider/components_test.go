@@ -14,6 +14,7 @@ type registered struct {
 	typ, name, provider string
 	inputs              resource.PropertyMap
 	ignoreChanges       []string
+	deleteBeforeReplace bool
 }
 
 type mocks struct {
@@ -23,7 +24,7 @@ type mocks struct {
 
 func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	m.mu.Lock()
-	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs, args.RegisterRPC.GetIgnoreChanges()})
+	m.all = append(m.all, registered{args.TypeToken, args.Name, args.Provider, args.Inputs, args.RegisterRPC.GetIgnoreChanges(), args.RegisterRPC.GetDeleteBeforeReplace()})
 	m.mu.Unlock()
 	return args.Name + "-id", args.Inputs, nil
 }

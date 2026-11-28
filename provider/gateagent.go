@@ -45,11 +45,11 @@ func NewGateAgent(ctx *pulumi.Context, name string, a GateAgentArgs, opts ...pul
 		_ = ctx.Log.Info("runnerNamespaces is not known yet: the runner namespaces' Roles are created on the update", &pulumi.LogArgs{Resource: agent})
 	}
 
-	token, err := corev1.NewSecret(ctx, name+"-token", gateAgentTokenSecret(namespace, a.Token), child)
+	token, err := corev1.NewSecret(ctx, name+"-token", gateAgentTokenSecret(namespace, a.Token), child, fixedName)
 	if err != nil {
 		return nil, err
 	}
-	pullSecret, err := corev1.NewSecret(ctx, name+"-image-pull", gateAgentImagePullSecret(namespace, a.ImagePull), child)
+	pullSecret, err := corev1.NewSecret(ctx, name+"-image-pull", gateAgentImagePullSecret(namespace, a.ImagePull), child, fixedName)
 	if err != nil {
 		return nil, err
 	}
