@@ -172,7 +172,10 @@ func hookFiles(h PoolHook, claim bool) (map[string]string, error) {
 func podmanFiles(mirror *PoolRegistryMirror) map[string]string {
 	files := map[string]string{"storage.conf": podmanStorageConf, "containers.conf": podmanContainersConf, "crun": crunWrapper, "strip-default-acls": stripDefaultACLsScript}
 	if mirror != nil {
-		files[registryMirrorFile] = registryMirrorConf(poolMirrorNamespace(*mirror))
+		// checkPool has refused a pool whose upstreams are not registry hosts.
+		if conf, err := registryMirrorConf(*mirror); err == nil {
+			files[registryMirrorFile] = conf
+		}
 	}
 	return files
 }
@@ -553,6 +556,11 @@ func checkPool(a PoolArgs) error {
 	}
 	if a.Hook != nil {
 		if _, err := hookFiles(*a.Hook, a.GateClaim != nil); err != nil {
+			return fmt.Errorf("pool %s: %w", a.ID, err)
+		}
+	}
+	if a.RegistryMirror != nil {
+		if _, err := registryMirrorConf(*a.RegistryMirror); err != nil {
 			return fmt.Errorf("pool %s: %w", a.ID, err)
 		}
 	}

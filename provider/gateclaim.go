@@ -79,8 +79,8 @@ func poolNetworkPolicy(a PoolArgs) PoolNetworkPolicy {
 	if a.RegistryMirror != nil {
 		n.Allow = append(append([]NetworkAllow{}, n.Allow...), NetworkAllow{
 			NamespaceLabels: map[string]string{"kubernetes.io/metadata.name": poolMirrorNamespace(*a.RegistryMirror)},
-			PodLabels:       map[string]string{"app": registryMirrorName},
-			Ports:           []int{registryMirrorPort},
+			// Every port: one per upstream, which only the Controller's list decides.
+			PodLabels: map[string]string{"app": registryMirrorName},
 		})
 	}
 	return n

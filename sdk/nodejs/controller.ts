@@ -90,7 +90,7 @@ export interface ControllerArgs {
      */
     priorityClassName?: string;
     /**
-     * A Docker Hub pull-through cache in the controller's namespace, registry-mirror:5000, for pools with registryMirror set. Off unless set. Every runner pod starts with empty image storage, and Docker Hub allows 100 anonymous pulls an hour per IPv4 address, which a machine's runners share.
+     * A pull-through cache for public registries (default docker.io, ghcr.io, quay.io) in the controller's namespace, as Services registry-mirror-<host>:5000, for pools with registryMirror set. Off unless set. Every runner pod starts with empty image storage, and Docker Hub allows 100 anonymous pulls an hour per IPv4 address, which a machine's runners share.
      */
     registryMirror?: inputs.RegistryMirrorArgs;
     /**

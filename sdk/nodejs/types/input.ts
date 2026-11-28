@@ -232,6 +232,10 @@ export interface PoolRegistryMirrorArgs {
      * The namespace of the Controller that runs the mirror. Default arc-systems.
      */
     namespace?: string;
+    /**
+     * Registries to pull through the mirror, by host. Default docker.io, ghcr.io, quay.io. One the mirror does not cache costs nothing but a failed lookup: podman goes to the registry itself.
+     */
+    upstreams?: string[];
 }
 
 export interface PoolSlotsArgs {
@@ -266,13 +270,21 @@ export interface RegistryMirrorArgs {
      */
     priorityClassName?: string;
     /**
+     * The cache volume's size, shared by all upstreams. Default 50Gi. Whether it is enforced is the StorageClass's business: local-path does not enforce it.
+     */
+    size?: string;
+    /**
      * The cache volume's StorageClass. Default: the cluster's default class.
      */
     storageClassName?: string;
     /**
-     * The cache's PersistentVolumeClaim size. Default 20Gi. Entries expire 7 days after their last pull.
+     * How long a cached manifest or blob lives, counted from when it was cached (a cache hit does not extend it), e.g. 720h. Default 720h. 0 keeps everything.
      */
-    storageSize?: string;
+    ttl?: string;
+    /**
+     * Registries to cache, by host. Default docker.io, ghcr.io, quay.io. Anonymous only: private images are not cached, and their pulls go to the upstream with the job's own credentials.
+     */
+    upstreams?: string[];
 }
 
 export interface RunnerGroupArgs {

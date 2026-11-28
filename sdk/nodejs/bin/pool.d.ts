@@ -125,7 +125,7 @@ export interface PoolArgs {
      */
     priorityClassName?: string;
     /**
-     * Pull docker.io images through the Controller's registryMirror, falling back to Docker Hub when it cannot answer. With a networkPolicy, runners may reach the mirror's pods on its port. Off unless set.
+     * Pull images from the mirrored registries through the Controller's registryMirror, falling back to each registry itself when the mirror cannot answer. With a networkPolicy, runners may reach the mirror's pods. Off unless set.
      */
     registryMirror?: inputs.PoolRegistryMirrorArgs;
     /**

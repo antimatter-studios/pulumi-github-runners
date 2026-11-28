@@ -10,6 +10,7 @@ require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.35.0
 	github.com/pulumi/pulumi/pkg/v3 v3.278.0
 	github.com/pulumi/pulumi/sdk/v3 v3.278.0
+	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
