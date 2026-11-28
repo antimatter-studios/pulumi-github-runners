@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The default runner image now has the GitHub CLI (`gh`). Jobs that called it, release jobs among
+  them, failed with `gh: command not found`. A pool that sets its own `image` is unaffected.
 - `Controller.createNamespace`: set `false` to install into a namespace that already exists, which
   pulumi-kubernetes refuses to create. Default `true`. Setting it on a Controller that created its
   namespace deletes that namespace and everything in it.
